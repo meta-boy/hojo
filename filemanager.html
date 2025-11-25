@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Manager - High Performance</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Ace Editor -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js" type="text/javascript" charset="utf-8"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+
+        /* Grid & Items */
+        .finder-item {
+            width: 100px; padding: 10px; border-radius: 6px;
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+            cursor: default; border: 1px solid transparent; transition: background-color 0.1s;
+        }
+        .finder-item:hover { background-color: rgba(0, 0, 0, 0.05); }
+        .finder-item.selected { background-color: #e4effd; border-color: #e4effd; }
+        .finder-item.selected .item-name { background-color: #2563eb; color: white; border-radius: 3px; padding: 0 4px; }
+        .finder-item:active { transform: scale(0.98); }
+
+        .icon-folder { font-size: 48px; line-height: 1; color: #60a5fa; text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .icon-file { font-size: 48px; line-height: 1; color: #9ca3af; text-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+        .item-name {
+            margin-top: 4px; font-size: 13px; line-height: 1.3;
+            word-break: break-word; max-width: 100%;
+            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+        }
+
+        /* Context Menu */
+        .context-menu {
+            position: absolute; background: rgba(255, 255, 255, 0.98);
+            border: 1px solid #e5e7eb; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            border-radius: 8px; z-index: 100; display: none; min-width: 160px; padding: 4px 0;
+        }
+        .context-menu li { padding: 6px 16px; cursor: default; color: #374151; font-size: 13px; }
+        .context-menu li:hover { background-color: #2563eb; color: white; }
+        .context-menu li.disabled { color: #9ca3af; pointer-events: none; }
+        .separator { height: 1px; background-color: #e5e7eb; margin: 4px 0; }
+
+        /* Modal & Animations */
+        .modal-window { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loader {
+            border: 3px solid #f3f3f3; border-top: 3px solid #3b82f6; border-radius: 50%;
+            width: 20px; height: 20px; animation: spin 1s linear infinite;
+        }
+        /* Simple toast for notifications */
+        .toast {
+            position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: rgba(31, 41, 55, 0.9); color: white; padding: 8px 16px;
+            border-radius: 20px; font-size: 14px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 1000;
+        }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body class="bg-gray-200 h-screen flex items-center justify-center overflow-hidden select-none" oncontextmenu="return false;">
+
+    <!-- Main Window -->
+    <div class="bg-white w-full h-full sm:w-[95%] sm:h-[90%] sm:rounded-xl shadow-2xl flex flex-col overflow-hidden border border-gray-300">
+        
+        <!-- Top Bar -->
+        <div class="h-12 bg-gray-100 border-b border-gray-300 flex items-center px-4 space-x-4 flex-shrink-0">
+            <div class="flex space-x-2 mr-2">
+                <div class="w-3 h-3 rounded-full bg-red-500 border border-red-600"></div>
+                <div class="w-3 h-3 rounded-full bg-yellow-500 border border-yellow-600"></div>
+                <div class="w-3 h-3 rounded-full bg-green-500 border border-green-600"></div>
+            </div>
+
+            <div class="flex space-x-1 text-gray-600">
+                <button id="btnBack" class="p-1 rounded hover:bg-gray-200 disabled:opacity-30 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                </button>
+                <button id="btnUp" class="p-1 rounded hover:bg-gray-200 transition">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
+                </button>
+            </div>
+
+            <div class="flex-1 flex items-center bg-white border border-gray-300 rounded px-3 py-1 text-sm text-gray-600 shadow-sm h-8 transition-colors focus-within:border-blue-400">
+                <span class="text-gray-400 mr-2">📂</span>
+                <span id="pathDisplay" class="truncate font-medium select-text">/</span>
+            </div>
+
+            <div class="flex items-center space-x-2">
+                <div id="networkActivity" class="hidden mr-2">
+                    <div class="loader w-4 h-4 border-2"></div>
+                </div>
+                <button id="btnReload" class="p-1.5 text-gray-600 hover:bg-gray-200 rounded" title="Refresh">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                </button>
+                <input type="file" id="fileInput" class="hidden" multiple>
+                <button onclick="document.getElementById('fileInput').click()" class="p-1.5 text-gray-600 hover:bg-gray-200 rounded" title="Upload">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                </button>
+                <button id="btnNewFolder" class="p-1.5 text-gray-600 hover:bg-gray-200 rounded" title="New Folder">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"></path></svg>
+                </button>
+            </div>
+        </div>
+
+        <div class="flex-1 flex overflow-hidden">
+            <!-- Sidebar -->
+            <div class="w-48 bg-gray-50/80 backdrop-blur-md border-r border-gray-200 flex-col pt-4 pb-4 hidden sm:flex">
+                <div class="px-4 mb-2 text-[11px] font-bold text-gray-400 uppercase tracking-wider">Favorites</div>
+                <div class="flex flex-col space-y-0.5 px-2">
+                    <button onclick="navigateTo('/')" class="text-left px-3 py-1.5 rounded-md text-sm text-gray-700 hover:bg-gray-200 flex items-center gap-2 transition-colors">
+                        <span class="text-blue-500">🏠</span> Home
+                    </button>
+                    <button onclick="navigateTo('/data')" class="text-left px-3 py-1.5 rounded-md text-sm text-gray-700 hover:bg-gray-200 flex items-center gap-2 transition-colors">
+                        <span class="text-blue-500">📊</span> Data
+                    </button>
+                    <button onclick="navigateTo('/config')" class="text-left px-3 py-1.5 rounded-md text-sm text-gray-700 hover:bg-gray-200 flex items-center gap-2 transition-colors">
+                        <span class="text-blue-500">⚙️</span> Config
+                    </button>
+                </div>
+                
+                <div class="mt-auto px-4">
+                    <div class="text-[10px] text-gray-500 mb-1 font-medium">STORAGE</div>
+                    <div class="w-full bg-gray-300 rounded-full h-1.5 overflow-hidden">
+                        <div id="storageBar" class="bg-blue-500 h-1.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                    <div id="storageText" class="text-[10px] text-gray-400 mt-1 text-right font-mono">...</div>
+                </div>
+            </div>
+
+            <!-- Drop Zone / Main Area -->
+            <div class="flex-1 bg-white relative flex flex-col" id="dropZone">
+                <!-- File Grid -->
+                <div id="fileGrid" class="flex-1 overflow-y-auto p-4 flex flex-wrap content-start gap-2 align-content-start" onclick="deselectAll(event)">
+                    <!-- Files injected here -->
+                </div>
+                
+                <!-- Status Bar -->
+                <div class="h-6 bg-gray-50 border-t border-gray-200 flex items-center justify-between px-3 text-[11px] text-gray-500 select-none">
+                    <span id="statusText">0 items</span>
+                    <span id="queueStatus" class="hidden text-gray-400">Queue: 0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Editor Modal -->
+    <div id="editorModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/20 backdrop-blur-sm">
+        <div class="bg-white w-[90%] h-[85%] rounded-lg shadow-2xl flex flex-col modal-window overflow-hidden animate-scaleIn">
+            <div class="h-10 bg-gray-100 border-b border-gray-200 flex items-center justify-between px-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">📝</span>
+                    <span id="editorFileName" class="text-sm font-medium text-gray-700">filename.txt</span>
+                    <span id="editorUnsavedIndicator" class="hidden w-2 h-2 bg-blue-500 rounded-full"></span>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="saveFile()" class="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded font-medium transition shadow-sm">Save</button>
+                    <button onclick="closeEditor()" class="text-xs bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 px-3 py-1.5 rounded font-medium transition shadow-sm">Close</button>
+                </div>
+            </div>
+            <div id="aceEditor" class="flex-1"></div>
+        </div>
+    </div>
+
+    <!-- Image Preview Modal -->
+    <div id="previewModal" class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" onclick="closePreview()">
+        <div class="max-w-[90%] max-h-[90%] p-2 bg-white rounded-lg shadow-2xl modal-window flex flex-col items-center" onclick="event.stopPropagation()">
+            <img id="previewImage" src="" class="max-w-full max-h-[80vh] rounded border border-gray-200 bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4IiBoZWlnaHQ9IjgiPjxyZWN0IHdpZHRoPSI4IiBoZWlnaHQ9IjgiIGZpbGw9IiNmZmYiLz48cGF0aCBkPSJNMCAwTDQgNHY0SDB6bTQgMGw0IDR2NEg0eiIgZmlsbD0iI2VlZSIvPjwvc3ZnPg==')]">
+            <div id="previewName" class="text-center text-sm font-medium text-gray-700 mt-2 bg-white px-3 py-1 rounded-full shadow-sm"></div>
+            <button onclick="closePreview()" class="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 rounded-full p-2">✕</button>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div id="contextMenu" class="context-menu">
+        <ul id="contextMenuList"></ul>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">Action Completed</div>
+
+    <script>
+        const BASE_URL = "http://e-paper.local";
+        
+        // =========================================
+        // PERFORMANCE CORE: Cache & Queue
+        // =========================================
+
+        // 1. Cache System: Directory Listing & File Content
+        const CACHE = {
+            dirs: new Map(), // path -> [items]
+            files: new Map(), // path -> content string
+            
+            // Check existence
+            hasDir: (path) => CACHE.dirs.has(path),
+            hasFile: (path) => CACHE.files.has(path),
+            
+            // Getters
+            getDir: (path) => CACHE.dirs.get(path),
+            getFile: (path) => CACHE.files.get(path),
+            
+            // Setters
+            setDir: (path, data) => CACHE.dirs.set(path, data),
+            setFile: (path, data) => CACHE.files.set(path, data),
+            
+            // Invalidation Strategies
+            invalidateDir: (path) => CACHE.dirs.delete(path),
+            invalidateFile: (path) => CACHE.files.delete(path),
+            
+            // When a file changes (upload/delete/rename), we must invalidate the PARENT dir
+            invalidateParent: (path) => {
+                const parent = path.substring(0, path.lastIndexOf('/')) || '/';
+                CACHE.invalidateDir(parent);
+                CACHE.invalidateFile(path); // Invalidate the file itself too
+            },
+            
+            clear: () => { CACHE.dirs.clear(); CACHE.files.clear(); }
+        };
+
+        // 2. Concurrency Control: Limits active requests to ESP32
+        // ESP32 webserver usually handles 4-5 concurrent connections max.
+        class RequestQueue {
+            constructor(concurrency = 2) {
+                this.concurrency = concurrency;
+                this.active = 0;
+                this.queue = [];
+            }
+
+            add(fn, priority = false) {
+                return new Promise((resolve, reject) => {
+                    const task = async () => {
+                        this.active++;
+                        this.updateStatus();
+                        try {
+                            const result = await fn();
+                            resolve(result);
+                        } catch (err) {
+                            reject(err);
+                        } finally {
+                            this.active--;
+                            this.updateStatus();
+                            this.next();
+                        }
+                    };
+                    
+                    if (priority) this.queue.unshift(task);
+                    else this.queue.push(task);
+                    
+                    this.next();
+                });
+            }
+
+            next() {
+                if (this.active < this.concurrency && this.queue.length > 0) {
+                    const task = this.queue.shift();
+                    task();
+                }
+            }
+
+            updateStatus() {
+                const el = document.getElementById('networkActivity');
+                if(this.active > 0) el.classList.remove('hidden');
+                else el.classList.add('hidden');
+                
+                // Debug info
+                // document.getElementById('queueStatus').innerText = `Q: ${this.queue.length} A: ${this.active}`;
+            }
+        }
+
+        const queue = new RequestQueue(2); // Limit to 2 parallel fetches
+
+        // =========================================
+        // API WRAPPER (Uses Queue & Cache)
+        // =========================================
+        const API = {
+            // List Directory: Uses Cache or Queue
+            list: async (path) => {
+                if (CACHE.hasDir(path)) return CACHE.getDir(path); // Instant return
+                
+                return queue.add(async () => {
+                    try {
+                        const res = await fetch(`${BASE_URL}/list?dir=${encodeURIComponent(path)}`);
+                        if (!res.ok) throw new Error('List failed');
+                        const data = await res.json();
+                        // Sort before caching: Dirs first, then alphabetical
+                        data.sort((a, b) => {
+                            if (a.type === b.type) return a.name.localeCompare(b.name);
+                            return a.type === 'dir' ? -1 : 1;
+                        });
+                        CACHE.setDir(path, data);
+                        return data;
+                    } catch (e) { return []; }
+                }, true); // High priority
+            },
+
+            // Create: Invalidates Parent
+            create: async (path) => {
+                return queue.add(async () => {
+                    const fd = new FormData(); fd.append("path", path);
+                    await fetch(`${BASE_URL}/edit`, { method: 'PUT', body: fd });
+                    CACHE.invalidateParent(path);
+                }, true);
+            },
+
+            // Delete: Invalidates Parent & File Cache
+            delete: async (path) => {
+                return queue.add(async () => {
+                    const fd = new FormData(); fd.append("path", path);
+                    await fetch(`${BASE_URL}/edit`, { method: 'DELETE', body: fd });
+                    CACHE.invalidateParent(path);
+                    // If it's a folder, we should technically invalidate sub-cache, but simple parent inval is mostly enough
+                    CACHE.dirs.delete(path);
+                }, true);
+            },
+
+            rename: async (from, to) => {
+                return queue.add(async () => {
+                    const fd = new FormData(); fd.append("path", to); fd.append("src", from);
+                    await fetch(`${BASE_URL}/edit`, { method: 'PUT', body: fd });
+                    CACHE.invalidateParent(from);
+                    CACHE.invalidateParent(to); // In case moved to diff folder
+                    if (CACHE.hasDir(from)) { // If renaming a folder, move its cache key? Simpler to just delete
+                        CACHE.invalidateDir(from); 
+                    }
+                }, true);
+            },
+
+            // Upload: Invalidates Parent
+            upload: async (file, path) => {
+                return queue.add(async () => {
+                    const fd = new FormData(); fd.append("data", file, path);
+                    await fetch(`${BASE_URL}/edit`, { method: 'POST', body: fd });
+                    CACHE.invalidateParent(path);
+                });
+            },
+
+            // Save: Updates File Cache & Invalidates Parent (size might change)
+            save: async (path, content) => {
+                return queue.add(async () => {
+                    const blob = new Blob([content], { type: 'text/plain' });
+                    const fd = new FormData(); fd.append("data", blob, path);
+                    await fetch(`${BASE_URL}/edit`, { method: 'POST', body: fd });
+                    CACHE.setFile(path, content); // Update cache immediately
+                    CACHE.invalidateParent(path); // Update list cache (size changed)
+                });
+            },
+
+            // Read: Uses File Cache
+            read: async (path) => {
+                if (CACHE.hasFile(path)) return CACHE.getFile(path);
+                return queue.add(async () => {
+                    const res = await fetch(`${BASE_URL}${path}`);
+                    if (!res.ok) throw new Error("Read failed");
+                    const txt = await res.text();
+                    CACHE.setFile(path, txt);
+                    return txt;
+                }, true);
+            },
+
+            status: async () => {
+                // Status is lightweight, maybe don't queue or low priority
+                try {
+                    const res = await fetch(`${BASE_URL}/status`);
+                    return await res.json();
+                } catch { return { totalBytes: 0, usedBytes: 0 }; }
+            }
+        };
+
+        // =========================================
+        // APP LOGIC
+        // =========================================
+        
+        let currentPath = "/";
+        let items = [];
+        let selectedItem = null;
+        let clipboard = null;
+        let history = ['/'];
+        let historyIndex = 0;
+        let editor = null;
+        let editorPath = "";
+
+        document.addEventListener("DOMContentLoaded", () => {
+            initEditor();
+            refreshView();
+            refreshStatus(); // Initial status check
+            
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.context-menu')) hideContextMenu();
+            });
+
+            document.getElementById('btnBack').onclick = goBack;
+            document.getElementById('btnUp').onclick = goUp;
+            document.getElementById('btnReload').onclick = () => { CACHE.clear(); refreshView(); };
+            document.getElementById('btnNewFolder').onclick = createNewFolder;
+            document.getElementById('fileInput').onchange = handleFileUpload;
+            
+            // Drag and Drop
+            const dropZone = document.getElementById('dropZone');
+            dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('bg-blue-50'); });
+            dropZone.addEventListener('dragleave', (e) => { e.preventDefault(); dropZone.classList.remove('bg-blue-50'); });
+            dropZone.addEventListener('drop', handleDrop);
+        });
+
+        function initEditor() {
+            editor = ace.edit("aceEditor");
+            editor.setTheme("ace/theme/chrome");
+            editor.session.setMode("ace/mode/text");
+            editor.setFontSize(14);
+            // Listen for changes to show unsaved dot
+            editor.session.on('change', () => {
+                document.getElementById('editorUnsavedIndicator').classList.remove('hidden');
+            });
+            // Ctrl+S
+            editor.commands.addCommand({
+                name: 'save', bindKey: {win: 'Ctrl-S',  mac: 'Command-S'},
+                exec: () => saveFile()
+            });
+        }
+
+        // --- Navigation ---
+        
+        async function navigateTo(path) {
+            if (path !== currentPath) {
+                currentPath = path;
+                if (historyIndex < history.length - 1) history = history.slice(0, historyIndex + 1);
+                history.push(path);
+                historyIndex++;
+            }
+            await refreshView();
+        }
+
+        function goBack() {
+            if (historyIndex > 0) {
+                historyIndex--;
+                currentPath = history[historyIndex];
+                refreshView();
+            }
+        }
+
+        function goUp() {
+            if (currentPath === '/') return;
+            const parent = currentPath.substring(0, currentPath.lastIndexOf('/')) || '/';
+            navigateTo(parent);
+        }
+
+        // --- Core Rendering & Prefetching ---
+
+        async function refreshView() {
+            deselectAll();
+            
+            // 1. Update UI Header
+            document.getElementById('pathDisplay').innerText = currentPath;
+            document.getElementById('btnBack').disabled = historyIndex === 0;
+            
+            // 2. Render Items
+            const grid = document.getElementById('fileGrid');
+            
+            // If cached, render immediately
+            if (CACHE.hasDir(currentPath)) {
+                items = CACHE.getDir(currentPath);
+                renderItems(items);
+            } else {
+                // Show loading placeholder?
+                // grid.innerHTML = '<div class="w-full h-full flex items-center justify-center text-gray-300">Loading...</div>';
+                items = await API.list(currentPath);
+                renderItems(items);
+            }
+
+            updateStatusBar();
+            
+            // 3. Premptive Fetching (Low Priority)
+            // Fetch list for all sub-directories in current view
+            prefetchSubdirs(items);
+        }
+
+        function renderItems(items) {
+            const grid = document.getElementById('fileGrid');
+            grid.innerHTML = '';
+            
+            if (items.length === 0) {
+                grid.innerHTML = `
+                    <div class="w-full h-full flex flex-col items-center justify-center text-gray-300 select-none">
+                        <div class="text-4xl mb-2">📭</div>
+                        <div>Empty Folder</div>
+                    </div>`;
+                return;
+            }
+
+            items.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'finder-item group';
+                el.onclick = (e) => selectItem(e, item, el);
+                el.ondblclick = () => openItem(item);
+                el.oncontextmenu = (e) => showContextMenu(e, item);
+                
+                const isDir = item.type === 'dir';
+                const iconContent = isDir ? '📁' : '📄';
+                const iconClass = isDir ? 'icon-folder' : 'icon-file';
+                
+                // Specific icons for common extensions
+                let displayIcon = iconContent;
+                if (!isDir) {
+                    const ext = item.name.split('.').pop().toLowerCase();
+                    if (['png','jpg','jpeg'].includes(ext)) displayIcon = '🖼️';
+                    else if (['json', 'js', 'html', 'css'].includes(ext)) displayIcon = '📜';
+                }
+
+                el.innerHTML = `
+                    <div class="${iconClass} transition-transform group-active:scale-95 select-none">${displayIcon}</div>
+                    <div class="item-name">${item.name}</div>
+                `;
+                grid.appendChild(el);
+            });
+        }
+
+        function prefetchSubdirs(items) {
+            items.forEach(item => {
+                if (item.type === 'dir') {
+                    const subPath = (currentPath === '/' ? '' : currentPath) + '/' + item.name;
+                    if (!CACHE.hasDir(subPath)) {
+                        // Add to queue, no priority
+                        queue.add(async () => {
+                            // We manually call fetch here to avoid triggering the API wrapper's high priority default if we used API.list
+                            // But reuse API logic for consistency
+                            try {
+                                const res = await fetch(`${BASE_URL}/list?dir=${encodeURIComponent(subPath)}`);
+                                if(res.ok) {
+                                    const data = await res.json();
+                                    data.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : (a.type === 'dir' ? -1 : 1)));
+                                    CACHE.setDir(subPath, data);
+                                }
+                            } catch(e) {}
+                        });
+                    }
+                }
+            });
+        }
+
+        async function refreshStatus() {
+            // Don't block main queue for status
+            const info = await API.status();
+            if (info.totalBytes) {
+                const pct = (info.usedBytes / info.totalBytes) * 100;
+                document.getElementById('storageBar').style.width = `${pct}%`;
+                document.getElementById('storageText').innerText = `${formatBytes(info.usedBytes)} / ${formatBytes(info.totalBytes)}`;
+            }
+        }
+
+        // --- Interaction ---
+
+        function selectItem(e, item, el) {
+            e.stopPropagation();
+            const prev = document.querySelector('.finder-item.selected');
+            if (prev) prev.classList.remove('selected');
+            
+            selectedItem = item;
+            el.classList.add('selected');
+            updateStatusBar();
+        }
+
+        function deselectAll(e) {
+            if (e && e.target !== e.currentTarget) return;
+            selectedItem = null;
+            const prev = document.querySelector('.finder-item.selected');
+            if (prev) prev.classList.remove('selected');
+            updateStatusBar();
+        }
+
+        function openItem(item) {
+            const fullPath = (currentPath === '/' ? '' : currentPath) + '/' + item.name;
+            if (item.type === 'dir') {
+                navigateTo(fullPath);
+            } else {
+                const ext = item.name.split('.').pop().toLowerCase();
+                if (['png', 'jpg', 'jpeg', 'gif', 'ico', 'svg'].includes(ext)) {
+                    showPreview(fullPath, item.name);
+                } else {
+                    openEditor(fullPath, item.name);
+                }
+            }
+        }
+
+        // --- Actions (Optimistic UI Update) ---
+
+        async function actionDelete() {
+            if (!selectedItem) return;
+            const itemName = selectedItem.name;
+            if (!confirm(`Delete "${itemName}"?`)) return;
+            
+            const path = (currentPath === '/' ? '' : currentPath) + '/' + itemName;
+            
+            // Optimistic UI: Remove immediately
+            items = items.filter(i => i.name !== itemName);
+            renderItems(items);
+            deselectAll();
+            
+            try {
+                await API.delete(path);
+                showToast("Item deleted");
+                refreshStatus();
+            } catch (e) { 
+                alert("Delete failed, reloading...");
+                CACHE.invalidateDir(currentPath);
+                refreshView();
+            }
+        }
+
+        async function actionRename() {
+            if (!selectedItem) return;
+            const oldName = selectedItem.name;
+            const newName = prompt("Rename to:", oldName);
+            if (!newName || newName === oldName) return;
+            
+            const oldPath = (currentPath === '/' ? '' : currentPath) + '/' + oldName;
+            const newPath = (currentPath === '/' ? '' : currentPath) + '/' + newName;
+            
+            // Optimistic UI
+            selectedItem.name = newName;
+            // Re-sort
+            items.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : (a.type === 'dir' ? -1 : 1)));
+            renderItems(items);
+
+            try {
+                await API.rename(oldPath, newPath);
+                showToast("Renamed");
+            } catch (e) {
+                alert("Rename failed");
+                CACHE.invalidateDir(currentPath);
+                refreshView();
+            }
+        }
+
+        async function createNewFolder() {
+            const name = prompt("Folder Name:", "Untitled Folder");
+            if (!name) return;
+            const path = (currentPath === '/' ? '' : currentPath) + '/' + name + '/';
+            
+            // Optimistic
+            items.push({ name: name, type: 'dir', size: 0 });
+            items.sort((a, b) => (a.type === b.type ? a.name.localeCompare(b.name) : (a.type === 'dir' ? -1 : 1)));
+            renderItems(items);
+
+            try {
+                await API.create(path);
+            } catch (e) {
+                CACHE.invalidateDir(currentPath);
+                refreshView();
+            }
+        }
+
+        // --- Copy / Paste ---
+
+        function actionCut() {
+            if (!selectedItem) return;
+            const fullPath = (currentPath === '/' ? '' : currentPath) + '/' + selectedItem.name;
+            clipboard = { type: 'cut', path: fullPath, name: selectedItem.name };
+            hideContextMenu();
+            showToast("Item cut to clipboard");
+        }
+
+        function actionCopy() {
+            if (!selectedItem || selectedItem.type === 'dir') {
+                if(selectedItem && selectedItem.type === 'dir') alert("Folder copy not supported on ESP32");
+                return;
+            }
+            const fullPath = (currentPath === '/' ? '' : currentPath) + '/' + selectedItem.name;
+            clipboard = { type: 'copy', path: fullPath, name: selectedItem.name };
+            hideContextMenu();
+            showToast("Item copied to clipboard");
+        }
+
+        async function actionPaste() {
+            if (!clipboard) return;
+            hideContextMenu();
+            
+            const destPath = (currentPath === '/' ? '' : currentPath) + '/' + clipboard.name;
+            showToast("Pasting...");
+            
+            try {
+                if (clipboard.type === 'cut') {
+                    // Optimistic Remove from view if we are in source dir
+                    // (Complex to detect, skipping UI optimism for move across folders)
+                    await API.rename(clipboard.path, destPath);
+                    clipboard = null; 
+                } else if (clipboard.type === 'copy') {
+                    const content = await API.read(clipboard.path);
+                    await API.save(destPath, content);
+                }
+                
+                // Invalidate current dir to show new file
+                CACHE.invalidateDir(currentPath);
+                await refreshView();
+                refreshStatus();
+                showToast("Paste Complete");
+            } catch (e) {
+                alert("Paste failed: " + e.message);
+            }
+        }
+
+        // --- Upload / Drop ---
+
+        async function handleDrop(e) {
+            e.preventDefault();
+            document.getElementById('dropZone').classList.remove('bg-blue-50');
+            if (e.dataTransfer.files.length > 0) {
+                uploadFiles(e.dataTransfer.files);
+            }
+        }
+
+        async function handleFileUpload(e) {
+            if (!e.target.files.length) return;
+            uploadFiles(e.target.files);
+            e.target.value = '';
+        }
+
+        async function uploadFiles(files) {
+            showToast(`Uploading ${files.length} files...`);
+            // Parallel uploads might choke ESP32, API wrapper handles queue
+            const promises = [];
+            for(let i=0; i<files.length; i++) {
+                const file = files[i];
+                const path = (currentPath === '/' ? '' : currentPath) + '/' + file.name;
+                promises.push(API.upload(file, path));
+            }
+            
+            await Promise.all(promises);
+            
+            CACHE.invalidateDir(currentPath);
+            await refreshView();
+            refreshStatus();
+            showToast("Upload Complete");
+        }
+
+        // --- Editor ---
+
+        async function openEditor(path, name) {
+            editorPath = path;
+            document.getElementById('editorFileName').innerText = name;
+            document.getElementById('editorUnsavedIndicator').classList.add('hidden');
+            document.getElementById('editorModal').classList.remove('hidden');
+            
+            try {
+                const content = await API.read(path);
+                editor.setValue(content, -1);
+                editor.session.getUndoManager().reset();
+                document.getElementById('editorUnsavedIndicator').classList.add('hidden');
+                
+                const ext = name.split('.').pop();
+                const modes = { js: 'javascript', py: 'python', cpp: 'c_cpp', h: 'c_cpp', json: 'json', html: 'html', css: 'css', xml: 'xml' };
+                editor.session.setMode("ace/mode/" + (modes[ext] || 'text'));
+            } catch (e) {
+                alert("Failed to load file");
+                closeEditor();
+            }
+        }
+
+        async function saveFile() {
+            if (!editorPath) return;
+            try {
+                await API.save(editorPath, editor.getValue());
+                document.getElementById('editorUnsavedIndicator').classList.add('hidden');
+                showToast("File Saved");
+            } catch (e) { alert("Save failed"); }
+        }
+
+        function closeEditor() {
+            document.getElementById('editorModal').classList.add('hidden');
+            editorPath = "";
+        }
+
+        // --- Context Menu ---
+
+        function showContextMenu(e, item) {
+            e.preventDefault();
+            if (!item && e.target.id !== 'fileGrid') return;
+            
+            if (item && (!selectedItem || selectedItem.name !== item.name)) {
+                // Auto-select right-clicked item
+                const els = document.querySelectorAll('.finder-item');
+                for(let el of els) {
+                    if(el.innerText.includes(item.name)) { selectItem(e, item, el); break; }
+                }
+            }
+
+            const menu = document.getElementById('contextMenu');
+            const list = document.getElementById('contextMenuList');
+            list.innerHTML = '';
+
+            if (item) {
+                list.innerHTML += `<li onclick="openItem(selectedItem)">Open</li>`;
+                list.innerHTML += `<div class="separator"></div>`;
+                list.innerHTML += `<li onclick="actionCut()">Cut</li>`;
+                if(item.type === 'file') list.innerHTML += `<li onclick="actionCopy()">Copy</li>`;
+                else list.innerHTML += `<li class="disabled">Copy</li>`;
+                list.innerHTML += `<div class="separator"></div>`;
+                list.innerHTML += `<li onclick="actionRename()">Rename</li>`;
+                list.innerHTML += `<li onclick="actionDelete()" class="text-red-600">Delete</li>`;
+                list.innerHTML += `<div class="separator"></div>`;
+                list.innerHTML += `<li onclick="window.open('${BASE_URL}${(currentPath === '/' ? '' : currentPath) + '/' + item.name}?download=true')">Download</li>`;
+            } else {
+                list.innerHTML += `<li onclick="createNewFolder()">New Folder</li>`;
+                list.innerHTML += `<li onclick="document.getElementById('fileInput').click()">Upload Files</li>`;
+                if (clipboard) {
+                    list.innerHTML += `<div class="separator"></div>`;
+                    list.innerHTML += `<li onclick="actionPaste()">Paste Item</li>`;
+                }
+            }
+
+            let x = e.pageX, y = e.pageY;
+            if (x + 160 > window.innerWidth) x -= 160;
+            if (y + 200 > window.innerHeight) y -= 200;
+            menu.style.left = `${x}px`; menu.style.top = `${y}px`; menu.style.display = 'block';
+        }
+
+        function hideContextMenu() { document.getElementById('contextMenu').style.display = 'none'; }
+
+        // --- Helpers ---
+
+        function showPreview(path, name) {
+            document.getElementById('previewImage').src = `${BASE_URL}${path}`;
+            document.getElementById('previewName').innerText = name;
+            document.getElementById('previewModal').classList.remove('hidden');
+        }
+        function closePreview() {
+            document.getElementById('previewModal').classList.add('hidden');
+            document.getElementById('previewImage').src = "";
+        }
+        function showToast(msg) {
+            const el = document.getElementById('toast');
+            el.innerText = msg;
+            el.classList.add('show');
+            setTimeout(() => el.classList.remove('show'), 2500);
+        }
+        function updateStatusBar() {
+            const status = document.getElementById('statusText');
+            if (selectedItem) {
+                const size = selectedItem.type === 'file' ? ` - ${formatBytes(selectedItem.size)}` : '';
+                status.innerText = `${selectedItem.name} (${selectedItem.type === 'dir' ? 'Folder' : 'File'}${size})`;
+            } else {
+                status.innerText = `${items.length} item${items.length !== 1 ? 's' : ''}`;
+            }
+        }
+        function formatBytes(bytes, decimals = 2) {
+            if (!+bytes) return '0 B';
+            const k = 1024, dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+        }
+    </script>
+</body>
+</html>
