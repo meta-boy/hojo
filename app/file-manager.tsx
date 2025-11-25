@@ -1,46 +1,23 @@
+import * as DocumentPicker from 'expo-document-picker';
+import { Stack, useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    BackHandler,
+    FlatList,
+    Modal,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    useColorScheme,
+    View
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-
-// ...
-
-export default function FileManager() {
-    const router = useRouter();
-    const insets = useSafeAreaInsets();
-    // ...
-
-    // ...
-    return (
-        <View style={[styles.container, { backgroundColor: theme.windowBg }]}>
-            {/* ... */}
-
-            {/* Main Window Container */}
-            <View style={[styles.window, { backgroundColor: theme.contentBg }]}>
-
-                {/* Window Header */}
-                <View style={[styles.header, {
-                    backgroundColor: theme.headerBg,
-                    borderBottomColor: theme.border,
-                    paddingTop: insets.top + 10, // Safe area + extra padding
-                }]}>
-                    {/* ... */}
-                </View>
-                {/* ... */}
-            </View>
-        </View>
-    );
-}
-
-const styles = StyleSheet.create({
-    // ...
-    header: {
-        // paddingTop removed from here, handled inline
-        paddingBottom: 10,
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 12,
-        borderBottomWidth: 1,
-    },
-    // ...
-});
+import { Path, Svg } from 'react-native-svg';
+import { createFolder, deleteItem, fetchList, fetchStatus, FileItem, renameItem, StorageStatus, uploadFile } from '../utils/fileManagerApi';
 
 const BASE_URL = 'http://192.168.3.3';
 
@@ -101,6 +78,7 @@ const IconUpload = ({ color = '#374151' }) => (
 
 export default function FileManager() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
     const colorScheme = useColorScheme();
     const isDark = colorScheme === 'dark';
     const theme = isDark ? Colors.dark : Colors.light;
@@ -303,7 +281,11 @@ export default function FileManager() {
             <View style={[styles.window, { backgroundColor: theme.contentBg }]}>
 
                 {/* Window Header */}
-                <View style={[styles.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
+                <View style={[styles.header, {
+                    backgroundColor: theme.headerBg,
+                    borderBottomColor: theme.border,
+                    paddingTop: insets.top + 10
+                }]}>
 
                     {/* Path Display */}
                     <View style={[styles.pathContainer, { backgroundColor: theme.contentBg, borderColor: theme.border }]}>
@@ -334,21 +316,6 @@ export default function FileManager() {
                         <IconUpload color={theme.text} />
                         <Text style={[styles.toolbarText, { color: theme.text }]}>Upload</Text>
                     </TouchableOpacity>
-
-                    {/* Storage Bar (Mini) */}
-                    <View style={styles.storageContainer}>
-                        <View style={[styles.storageBarBg, { backgroundColor: theme.border }]}>
-                            <View
-                                style={[styles.storageBarFill, {
-                                    backgroundColor: theme.primary,
-                                    width: `${getStoragePercentage()}%`
-                                }]}
-                            />
-                        </View>
-                        <Text style={[styles.storageText, { color: theme.subText }]}>
-                            {storageInfo ? `${(storageInfo.usedBytes / 1024 / 1024).toFixed(1)}MB used` : 'Storage'}
-                        </Text>
-                    </View>
                 </View>
 
                 {/* File Grid */}

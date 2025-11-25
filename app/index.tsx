@@ -1,8 +1,12 @@
+import { Readability } from '@mozilla/readability';
+import * as FileSystem from 'expo-file-system/legacy';
 import { Stack, useRouter } from 'expo-router';
+import { parseHTML } from 'linkedom';
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, AppState, Dimensions, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, useColorScheme, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Dimensions, Modal, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EpaperConnectivity from '../modules/epaper-connectivity';
-import { fetchStatus, StorageStatus } from '../utils/fileManagerApi';
+import { createFolder, fetchList, fetchStatus, StorageStatus, uploadFile } from '../utils/fileManagerApi';
 
 // macOS Theme Colors
 const Colors = {
@@ -30,17 +34,25 @@ const Colors = {
   },
 };
 
+const BASE_URL = 'http://192.168.3.3';
+
 export default function App() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const theme = isDark ? Colors.dark : Colors.light;
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const [isConnected, setIsConnected] = useState(false);
   const [isBound, setIsBound] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [storageStatus, setStorageStatus] = useState<StorageStatus | null>(null);
   const appState = useRef(AppState.currentState);
+
+  // Quick Link State
+  const [quickLinkVisible, setQuickLinkVisible] = useState(false);
+  const [quickLinkUrl, setQuickLinkUrl] = useState('');
+  const [converting, setConverting] = useState(false);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
@@ -52,7 +64,7 @@ export default function App() {
 
     checkConnection();
     const interval = setInterval(() => {
-      if (!isConnected && !isConnecting) {
+      if (!isConnected && !isConnecting && !converting) {
         handleConnect(true);
       }
     }, 5000);
@@ -61,7 +73,7 @@ export default function App() {
       subscription.remove();
       clearInterval(interval);
     };
-  }, [isConnected, isConnecting]);
+  }, [isConnected, isConnecting, converting]);
 
   useEffect(() => {
     if (isConnected) {
@@ -87,7 +99,7 @@ export default function App() {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
-      const status = await fetchStatus('http://192.168.3.3');
+      const status = await fetchStatus(BASE_URL);
       setStorageStatus(status);
     } catch (error) {
       console.warn('Failed to fetch device status:', error);
@@ -127,8 +139,133 @@ export default function App() {
   const handleAction = (action: string) => {
     if (action === 'File Manager') {
       router.push('/file-manager');
+    } else if (action === 'Quick Link') {
+      setQuickLinkVisible(true);
     } else {
       Alert.alert('Action', `Clicked: ${action}`);
+    }
+  };
+
+  const handleConvertAndUpload = async () => {
+    if (!quickLinkUrl) return;
+
+    if (Platform.OS === 'web') {
+      Alert.alert('Not Supported', 'URL conversion is not supported on Web due to CORS restrictions.');
+      return;
+    }
+
+    setConverting(true);
+    try {
+      // 0. Unbind from E-Paper network to allow Internet access
+      if (Platform.OS === 'android') {
+        await EpaperConnectivity.unbindNetwork();
+        // Give it a moment to switch networks
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+
+      // 1. Fetch HTML content
+      const response = await fetch(quickLinkUrl);
+      const html = await response.text();
+
+      // 2. Parse and Extract using Readability
+      const { document } = parseHTML(html);
+      const reader = new Readability(document);
+      const article = reader.parse();
+
+      if (!article) throw new Error('Could not parse article content');
+
+      // 3. Send to dotEPUB API
+      const formData = new FormData();
+      formData.append('html', article.content || '');
+      formData.append('title', article.title || 'Untitled');
+      formData.append('url', quickLinkUrl);
+      formData.append('lang', 'en');
+      formData.append('format', 'epub');
+      formData.append('author', article.byline || '');
+      formData.append('links', '0'); // Immersive mode (remove links)
+      formData.append('imgs', '1'); // Include images
+      formData.append('flags', '|');
+
+      const convertRes = await fetch('https://dotepub.com/api/v1/post', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!convertRes.ok) {
+        const text = await convertRes.text();
+        console.error('dotEPUB error:', text);
+        throw new Error('Conversion failed');
+      }
+
+      // 4. Save the binary response
+      const blob = await convertRes.blob();
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+      });
+
+      // Prioritize metadata titles
+      const ogTitle = document.querySelector('meta[property="og:title"]')?.getAttribute('content');
+      const docTitle = document.title;
+
+      let rawTitle = ogTitle || docTitle || article.title || 'Untitled';
+      try {
+        const fixedTitle = rawTitle.replace(/%(?![0-9a-fA-F]{2})/g, '%25');
+        rawTitle = decodeURIComponent(fixedTitle);
+      } catch (e) {
+        console.warn('Title decoding failed:', e);
+      }
+
+      const sanitizedTitle = rawTitle
+        .replace(/[<>:"/\\|?*]/g, '')
+        .trim()
+        .substring(0, 50);
+
+      const fileName = `${sanitizedTitle}.epub`;
+      const tempFileName = `temp_${Date.now()}.epub`;
+      const tempFileUri = `${FileSystem.cacheDirectory}${tempFileName}`;
+
+      await FileSystem.writeAsStringAsync(tempFileUri, base64Data, { encoding: 'base64' });
+
+      // 5. Re-bind to E-Paper network to upload
+      if (Platform.OS === 'android') {
+        await EpaperConnectivity.bindToEpaperNetwork();
+        // Give it a moment to stabilize
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // Check/Create /books folder
+      const rootFiles = await fetchList(BASE_URL, '/');
+      const booksFolderExists = rootFiles.some(f => f.name === 'books' && f.type === 'dir');
+
+      if (!booksFolderExists) {
+        await createFolder(BASE_URL, '/books');
+      }
+
+      const targetPath = `/books/${fileName}`;
+      await uploadFile(BASE_URL, tempFileUri, fileName, targetPath);
+
+      // Cleanup
+      await FileSystem.deleteAsync(tempFileUri, { idempotent: true });
+
+      Alert.alert('Success', 'Article converted and saved to /books');
+      setQuickLinkVisible(false);
+      setQuickLinkUrl('');
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Error', 'Failed to convert or upload article');
+
+      // Ensure we re-bind if we failed during the internet phase
+      if (Platform.OS === 'android') {
+        EpaperConnectivity.bindToEpaperNetwork().catch(console.error);
+      }
+    } finally {
+      setConverting(false);
     }
   };
 
@@ -155,7 +292,11 @@ export default function App() {
       <View style={[styles.window, { backgroundColor: theme.contentBg }]}>
 
         {/* Window Header */}
-        <View style={[styles.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
+        <View style={[styles.header, {
+          backgroundColor: theme.headerBg,
+          borderBottomColor: theme.border,
+          paddingTop: insets.top + 10
+        }]}>
         </View>
 
         <ScrollView contentContainerStyle={styles.content}>
@@ -229,6 +370,55 @@ export default function App() {
 
         </ScrollView>
       </View>
+
+      {/* Quick Link Modal */}
+      <Modal
+        visible={quickLinkVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setQuickLinkVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: theme.contentBg }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Quick Link to EPUB</Text>
+            <Text style={[styles.modalSubtitle, { color: theme.subText }]}>
+              Enter a URL to convert it to an EPUB and upload it to your device.
+            </Text>
+
+            <TextInput
+              style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.windowBg }]}
+              value={quickLinkUrl}
+              onChangeText={setQuickLinkUrl}
+              placeholder="https://example.com/article"
+              placeholderTextColor={theme.subText}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setQuickLinkVisible(false)}
+                disabled={converting}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: theme.primary, opacity: converting ? 0.7 : 1 }]}
+                onPress={handleConvertAndUpload}
+                disabled={converting || !quickLinkUrl}
+              >
+                {converting ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.submitButtonText}>Send to Device</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -241,7 +431,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 50,
     paddingBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
@@ -331,5 +520,67 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     textAlign: 'center',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    borderRadius: 12,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 10,
+    maxWidth: 400,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    marginBottom: 20,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 6,
+    padding: 10,
+    fontSize: 14,
+    marginBottom: 20,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 44,
+  },
+  cancelButton: {
+    backgroundColor: '#9CA3AF',
+  },
+  cancelButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  submitButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });

@@ -1,0 +1,6 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": ["com.anurag4884.hojo.epaperconnectivity.EpaperConnectivityModule"]
+  }
+}
