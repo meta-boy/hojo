@@ -41,3 +41,15 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Local Modules Build Artifacts
+modules/*/android/build/
+modules/*/android/.cxx/
+modules/*/android/.gradle/
+modules/*/ios/build/
+modules/*/ios/Pods/
+modules/*/node_modules/
+modules/*/lib/
+modules/*/tsconfig.tsbuildinfo
+build-*.aab
+build-*.apk

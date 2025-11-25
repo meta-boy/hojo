@@ -10,6 +10,11 @@ export interface FileItem {
 export interface StorageStatus {
     totalBytes: number;
     usedBytes: number;
+    version: string;
+    device_type: string;
+    type: string;
+    isOk: string;
+    id: string;
 }
 
 export const fetchList = async (baseUrl: string, path: string): Promise<FileItem[]> => {
@@ -34,7 +39,16 @@ export const fetchStatus = async (baseUrl: string): Promise<StorageStatus> => {
         return await res.json();
     } catch (e) {
         console.error(e);
-        return { totalBytes: 0, usedBytes: 0 };
+        // Return a default object matching the interface
+        return {
+            totalBytes: 0,
+            usedBytes: 0,
+            version: 'Unknown',
+            device_type: 'Unknown',
+            type: 'Unknown',
+            isOk: 'false',
+            id: 'Unknown'
+        };
     }
 };
 
@@ -101,18 +115,18 @@ export const uploadFile = async (
 
     // Build multipart body manually
     const boundary = `----WebKitFormBoundary${Date.now()}`;
-    
-    const header = 
+
+    const header =
         `--${boundary}\r\n` +
         `Content-Disposition: form-data; name="data"; filename="${targetPath}"\r\n` +
         `Content-Type: ${mimeType}\r\n\r\n`;
-    
+
     const footer = `\r\n--${boundary}--\r\n`;
 
     // Combine header + file bytes + footer
     const headerBytes = new TextEncoder().encode(header);
     const footerBytes = new TextEncoder().encode(footer);
-    
+
     const body = new Uint8Array(headerBytes.length + bytes.length + footerBytes.length);
     body.set(headerBytes, 0);
     body.set(bytes, headerBytes.length);
