@@ -51,3 +51,5 @@ modules/*/ios/Pods/
 modules/*/node_modules/
 modules/*/lib/
 modules/*/tsconfig.tsbuildinfo
+build-*.aab
+build-*.apk

@@ -49,7 +49,7 @@ class EpaperConnectivityModule : Module() {
                 OkHttpClientProvider.setOkHttpClientFactory {
                     OkHttpClient.Builder()
                             .cookieJar(com.facebook.react.modules.network.ReactCookieJarContainer())
-                            .addInterceptor(SmartNetworkInterceptor(connectivityManager))
+                            .addInterceptor(SmartNetworkInterceptor(appContext))
                             .build()
                 }
             } catch (e: Exception) {
@@ -60,6 +60,33 @@ class EpaperConnectivityModule : Module() {
         // Phase 2: Core Connection
         AsyncFunction("connectToEpaperHotspot") { promise: Promise ->
             try {
+                val activity = appContext.currentActivity
+                if (activity != null) {
+                    val permissions = mutableListOf<String>()
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        if (activity.checkSelfPermission(
+                                        android.Manifest.permission.ACCESS_FINE_LOCATION
+                                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                        ) {
+                            permissions.add(android.Manifest.permission.ACCESS_FINE_LOCATION)
+                        }
+                    }
+
+                    if (Build.VERSION.SDK_INT >= 33) { // Android 13 (Tiramisu)
+                        if (activity.checkSelfPermission(
+                                        "android.permission.NEARBY_WIFI_DEVICES"
+                                ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                        ) {
+                            permissions.add("android.permission.NEARBY_WIFI_DEVICES")
+                        }
+                    }
+
+                    if (permissions.isNotEmpty()) {
+                        activity.requestPermissions(permissions.toTypedArray(), 1001)
+                    }
+                }
+
                 val wifiNetworkSpecifier =
                         WifiNetworkSpecifier.Builder()
                                 .setSsid(EPAPER_SSID)

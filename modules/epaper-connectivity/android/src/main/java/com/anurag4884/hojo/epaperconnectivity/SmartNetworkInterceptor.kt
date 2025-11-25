@@ -1,15 +1,22 @@
 package com.anurag4884.hojo.epaperconnectivity
 
+import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
 import androidx.annotation.RequiresApi
+import expo.modules.kotlin.AppContext
 import okhttp3.Interceptor
 import okhttp3.Response
 
 @RequiresApi(Build.VERSION_CODES.M)
-class SmartNetworkInterceptor(private val connectivityManager: ConnectivityManager) : Interceptor {
+class SmartNetworkInterceptor(private val appContext: AppContext) : Interceptor {
+
+    private val connectivityManager: ConnectivityManager?
+        get() =
+                appContext.reactContext?.getSystemService(Context.CONNECTIVITY_SERVICE) as?
+                        ConnectivityManager
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
@@ -21,8 +28,14 @@ class SmartNetworkInterceptor(private val connectivityManager: ConnectivityManag
             return chain.proceed(request)
         }
 
+        val cm = connectivityManager
+        if (cm == null) {
+            // Context not ready, proceed normally
+            return chain.proceed(request)
+        }
+
         // 2. Check Current Network State
-        val boundNetwork = connectivityManager.boundNetworkForProcess
+        val boundNetwork = cm.boundNetworkForProcess
 
         if (boundNetwork == null) {
             // No binding, proceed normally
@@ -30,23 +43,27 @@ class SmartNetworkInterceptor(private val connectivityManager: ConnectivityManag
         }
 
         // Check if the bound network is the E-Paper network (WiFi and !Internet)
-        val caps = connectivityManager.getNetworkCapabilities(boundNetwork)
+        val caps = cm.getNetworkCapabilities(boundNetwork)
         val isWifi = caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
         val hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
 
         if (isWifi && !hasInternet) {
             // 3. The Forced Network Switch
-            return switchNetwork(chain, boundNetwork)
+            return switchNetwork(chain, boundNetwork, cm)
         }
 
         // Bound to a good network (Cellular or Validated WiFi), proceed
         return chain.proceed(request)
     }
 
-    private fun switchNetwork(chain: Interceptor.Chain, originalNetwork: Network): Response {
+    private fun switchNetwork(
+            chain: Interceptor.Chain,
+            originalNetwork: Network,
+            cm: ConnectivityManager
+    ): Response {
         try {
             // 1. Unbind
-            connectivityManager.bindProcessToNetwork(null)
+            cm.bindProcessToNetwork(null)
 
             // 2. Wait for System Reroute
             try {
@@ -59,7 +76,7 @@ class SmartNetworkInterceptor(private val connectivityManager: ConnectivityManag
             return chain.proceed(chain.request())
         } finally {
             // 4. Restore Binding
-            connectivityManager.bindProcessToNetwork(originalNetwork)
+            cm.bindProcessToNetwork(originalNetwork)
         }
     }
 }
