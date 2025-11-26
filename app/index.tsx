@@ -63,6 +63,8 @@ export default function App() {
       router.push('/file-manager');
     } else if (action === 'Quick Link') {
       setQuickLinkVisible(true);
+    } else if (action === 'Wallpaper Editor') {
+      router.push('/wallpaper-editor');
     } else {
       Alert.alert('Action', `Clicked: ${action}`);
     }

@@ -26,6 +26,14 @@ export const AppDock: React.FC<AppDockProps> = ({ theme, onAction }) => {
                     <Text style={styles.dockIcon}>🔗</Text>
                     <Text style={[styles.dockLabel, { color: theme.text }]}>Quick Link</Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.dockItem, { backgroundColor: theme.windowBg, borderColor: theme.border }]}
+                    onPress={() => onAction('Wallpaper Editor')}
+                >
+                    <Text style={styles.dockIcon}>🖼️</Text>
+                    <Text style={[styles.dockLabel, { color: theme.text }]}>Wallpaper</Text>
+                </TouchableOpacity>
             </View>
         </View>
     );
