@@ -25,7 +25,8 @@ export const FileGrid: React.FC<FileGridProps> = ({
 }) => {
     const renderItem = ({ item }: { item: FileItem }) => (
         <TouchableOpacity
-            style={[styles.gridItem, { borderColor: 'transparent' }]}
+            // removed flex: 1, added width constraint
+            style={[styles.gridItem, { borderColor: 'transparent' }]} 
             onPress={() => onNavigate(item)}
             onLongPress={() => {
                 Alert.alert(
@@ -54,7 +55,7 @@ export const FileGrid: React.FC<FileGridProps> = ({
                 data={files}
                 renderItem={renderItem}
                 keyExtractor={(item) => item.name}
-                numColumns={4} // Grid layout
+                numColumns={4}
                 contentContainerStyle={styles.gridContent}
                 columnWrapperStyle={styles.columnWrapper}
                 refreshing={refreshing}
@@ -84,24 +85,26 @@ const styles = StyleSheet.create({
     },
     columnWrapper: {
         gap: 12,
+        justifyContent: 'flex-start', // Ensures items start from left
     },
     gridItem: {
-        flex: 1,
+        // flex: 1, <--- REMOVED to stop stretching
+        width: '22%', // Added: Fits 4 items roughly (100% / 4 minus gap)
         alignItems: 'center',
         marginBottom: 16,
-        padding: 8,
+        padding: 4, // Reduced padding slightly
         borderRadius: 6,
     },
     iconContainer: {
         marginBottom: 4,
     },
     gridIcon: {
-        fontSize: 48,
+        fontSize: 40, // Reduced from 48
     },
     gridItemName: {
-        fontSize: 12,
+        fontSize: 10, // Reduced from 12
         textAlign: 'center',
-        lineHeight: 16,
+        lineHeight: 12, // Adjusted line height
     },
     emptyContainer: {
         flex: 1,

@@ -21,14 +21,6 @@ export const AppDock: React.FC<AppDockProps> = ({ theme, onAction }) => {
 
                 <TouchableOpacity
                     style={[styles.dockItem, { backgroundColor: theme.windowBg, borderColor: theme.border }]}
-                    onPress={() => onAction('Convert Files')}
-                >
-                    <Text style={styles.dockIcon}>📄</Text>
-                    <Text style={[styles.dockLabel, { color: theme.text }]}>Convert</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                    style={[styles.dockItem, { backgroundColor: theme.windowBg, borderColor: theme.border }]}
                     onPress={() => onAction('Quick Link')}
                 >
                     <Text style={styles.dockIcon}>🔗</Text>

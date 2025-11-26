@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, BackHandler } from 'react-native';
 import { createFolder, deleteItem, fetchList, fetchStatus, FileItem, renameItem, StorageStatus, uploadFile } from '../utils/fileManagerApi';
+import { formatBytes } from '@/utils/format';
 
 export function useFileManager(BASE_URL: string) {
     const router = useRouter();
@@ -71,7 +72,7 @@ export function useFileManager(BASE_URL: string) {
             const newPath = currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`;
             setCurrentPath(newPath);
         } else {
-            Alert.alert('File Info', `Name: ${item.name}\nSize: ${item.size} bytes`);
+            Alert.alert('File Info', `Name: ${item.name}\nSize: ${formatBytes(item.size ?? 0)}`);
         }
     };
 
