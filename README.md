@@ -1,50 +1,65 @@
-# Welcome to your Expo app 👋
+<div align="center">
+  <img src="./assets/images/icon.png" alt="Hojo Logo" width="120" height="120" />
+  <h1>Hojo</h1>
+  <p>
+    <strong>A powerful companion application for the XTEINK X4 (chinese firmware).</strong>
+  </p>
+  <p>
+    Built with <a href="https://expo.dev">Expo</a> and <a href="https://www.nativewind.dev/">NativeWind</a>.
+  </p>
+</div>
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+<br />
 
-## Get started
+## 🚀 Overview
 
-1. Install dependencies
+Hojo is a feature-rich mobile application designed to enhance your experience with E-paper devices. It bridges the gap between the web and your e-reader, offering advanced tools for content management and customization.
+
+## ✨ Key Features
+
+- **📂 Advanced File Manager**: Browse, organize, rename, and manage files seamlessly on your device.
+- **🌐 Web to EPUB Converter**: Instantly convert web articles into formatted EPUB books for offline reading.
+- **🎨 Wallpaper Maker**: Create and customize wallpapers perfectly sized for your E-paper display.
+- **⚡ Smart Connectivity**: Intelligent hotspot connection management for E-paper devices with network interception capabilities.
+- **🌑 Modern UI**: A sleek, dark-mode optimized interface built with TailwindCSS and NativeWind.
+
+## 🛠️ Tech Stack
+
+- **Framework**: [React Native](https://reactnative.dev/) / [Expo](https://expo.dev/)
+- **Routing**: [Expo Router](https://docs.expo.dev/router/introduction/)
+- **Styling**: [NativeWind](https://www.nativewind.dev/) (TailwindCSS)
+- **Icons**: [Lucide React Native](https://lucide.dev/guide/packages/lucide-react-native)
+- **Parsing**: [Linkedom](https://github.com/WebReflection/linkedom) & [Mozilla Readability](https://github.com/mozilla/readability)
+
+## 🏃‍♂️ Get Started
+
+1. **Install dependencies**
 
    ```bash
    npm install
    ```
 
-2. Start the app
+2. **Start the app**
 
    ```bash
    npx expo start
    ```
 
-In the output, you'll find options to open the app in a
+   In the output, you'll find options to open the app in a:
+   - [Development build](https://docs.expo.dev/develop/development-builds/introduction/)
+   - [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
+   - [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
+   - [Expo Go](https://expo.dev/go)
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## 📱 Project Structure
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
-## Get a fresh project
+- `app/`: Main application screens and routes.
+- `components/`: Reusable UI components.
+- `assets/`: Images, fonts, and other static assets.
+- `scripts/`: Utility scripts for project management.
 
-When you're ready, run:
+## 🤝 Contributing
 
-```bash
-npm run reset-project
-```
-
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
-
-## Learn more
-
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Contributions are welcome! Please feel free to submit a Pull Request.
