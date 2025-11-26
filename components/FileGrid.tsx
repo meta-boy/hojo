@@ -11,6 +11,7 @@ interface FileGridProps {
     onNavigate: (item: FileItem) => void;
     onRename: (item: FileItem) => void;
     onDelete: (item: FileItem) => void;
+    onDownload: (item: FileItem) => void;
 }
 
 export const FileGrid: React.FC<FileGridProps> = ({
@@ -22,11 +23,12 @@ export const FileGrid: React.FC<FileGridProps> = ({
     onNavigate,
     onRename,
     onDelete,
+    onDownload,
 }) => {
     const renderItem = ({ item }: { item: FileItem }) => (
         <TouchableOpacity
             // removed flex: 1, added width constraint
-            style={[styles.gridItem, { borderColor: 'transparent' }]} 
+            style={[styles.gridItem, { borderColor: 'transparent' }]}
             onPress={() => onNavigate(item)}
             onLongPress={() => {
                 Alert.alert(
@@ -34,6 +36,7 @@ export const FileGrid: React.FC<FileGridProps> = ({
                     item.name,
                     [
                         { text: 'Rename', onPress: () => onRename(item) },
+                        { text: 'Download', onPress: () => onDownload(item) },
                         { text: 'Delete', onPress: () => onDelete(item), style: 'destructive' },
                         { text: 'Cancel', style: 'cancel' },
                     ]

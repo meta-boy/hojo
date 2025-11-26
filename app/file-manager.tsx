@@ -63,7 +63,8 @@ export default function FileManager() {
         handleRename,
         handleDelete,
         handleUpload,
-        handleModalSubmit
+        handleModalSubmit,
+        handleDownload
     } = useFileManager(BASE_URL);
 
     return (
@@ -100,6 +101,7 @@ export default function FileManager() {
                     onNavigate={handleNavigate}
                     onRename={handleRename}
                     onDelete={handleDelete}
+                    onDownload={handleDownload}
                 />
 
             </View>

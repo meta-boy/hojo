@@ -1,11 +1,12 @@
 import * as Clipboard from 'expo-clipboard';
-import { File, Paths } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 import { FileItem } from './fileManagerApi';
 
 export const downloadFile = async (baseUrl: string, item: FileItem, currentPath: string): Promise<void> => {
     const path = currentPath === '/' ? `/${item.name}` : `${currentPath}/${item.name}`;
+    const fileUri = `${FileSystem.documentDirectory}${item.name}`;
 
     if (Platform.OS === 'web') {
         const link = document.createElement('a');
@@ -18,15 +19,19 @@ export const downloadFile = async (baseUrl: string, item: FileItem, currentPath:
     }
 
     try {
-        const file = new File(Paths.document, item.name);
-        await File.downloadFileAsync(`${baseUrl}${path}`, file);
+        const downloadRes = await FileSystem.downloadAsync(
+            `${baseUrl}${path}`,
+            fileUri
+        );
 
-        if (file.exists) {
+        if (downloadRes.status === 200) {
             if (await Sharing.isAvailableAsync()) {
-                await Sharing.shareAsync(file.uri);
+                await Sharing.shareAsync(downloadRes.uri);
             } else {
                 console.log('Sharing not available');
             }
+        } else {
+            throw new Error(`Download failed with status ${downloadRes.status}`);
         }
     } catch (e) {
         console.error('Download failed', e);

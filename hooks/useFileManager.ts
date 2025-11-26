@@ -1,9 +1,10 @@
+import { formatBytes } from '@/utils/format';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Alert, BackHandler } from 'react-native';
+import { downloadFile } from '../utils/fileActions';
 import { createFolder, deleteItem, fetchList, fetchStatus, FileItem, renameItem, StorageStatus, uploadFile } from '../utils/fileManagerApi';
-import { formatBytes } from '@/utils/format';
 
 export function useFileManager(BASE_URL: string) {
     const router = useRouter();
@@ -147,6 +148,14 @@ export function useFileManager(BASE_URL: string) {
         }
     };
 
+    const handleDownload = async (item: FileItem) => {
+        try {
+            await downloadFile(BASE_URL, item, currentPath);
+        } catch (error) {
+            Alert.alert('Error', 'Failed to download file');
+        }
+    };
+
     const handleModalSubmit = async () => {
         if (!inputText.trim()) return;
 
@@ -184,6 +193,7 @@ export function useFileManager(BASE_URL: string) {
         handleRename,
         handleDelete,
         handleUpload,
-        handleModalSubmit
+        handleModalSubmit,
+        handleDownload
     };
 }
