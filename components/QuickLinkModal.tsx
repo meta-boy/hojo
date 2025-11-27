@@ -1,5 +1,6 @@
+import { Link } from 'lucide-react-native';
 import React from 'react';
-import { ActivityIndicator, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 interface QuickLinkModalProps {
     visible: boolean;
@@ -27,18 +28,24 @@ export const QuickLinkModal: React.FC<QuickLinkModalProps> = ({
             animationType="fade"
             onRequestClose={onClose}
         >
-            <View style={styles.modalOverlay}>
-                <View style={[styles.modalContent, { backgroundColor: theme.contentBg }]}>
-                    <Text style={[styles.modalTitle, { color: theme.text }]}>Quick Link to EPUB</Text>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={styles.modalOverlay}
+            >
+                <View style={[styles.modalContent, { backgroundColor: theme.headerBg, borderColor: theme.border, borderWidth: 1 }]}>
+                    <View style={styles.iconCircle}>
+                        <Link size={24} color={theme.primary} />
+                    </View>
+                    <Text style={[styles.modalTitle, { color: theme.text }]}>New Quick Link</Text>
                     <Text style={[styles.modalSubtitle, { color: theme.subText }]}>
-                        Enter a URL to convert it to an EPUB and upload it to your device.
+                        Paste a URL below to convert and send it to your device instantly.
                     </Text>
 
                     <TextInput
-                        style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.windowBg }]}
+                        style={[styles.input, { color: theme.text, backgroundColor: theme.windowBg }]}
                         value={url}
                         onChangeText={onChangeUrl}
-                        placeholder="https://example.com/article"
+                        placeholder="https://..."
                         placeholderTextColor={theme.subText}
                         autoCapitalize="none"
                         autoCorrect={false}
@@ -61,12 +68,12 @@ export const QuickLinkModal: React.FC<QuickLinkModalProps> = ({
                             {converting ? (
                                 <ActivityIndicator size="small" color="#FFFFFF" />
                             ) : (
-                                <Text style={styles.submitButtonText}>Send to Device</Text>
+                                <Text style={styles.submitButtonText}>Send Link</Text>
                             )}
                         </TouchableOpacity>
                     </View>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 };
@@ -74,64 +81,69 @@ export const QuickLinkModal: React.FC<QuickLinkModalProps> = ({
 const styles = StyleSheet.create({
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.7)',
         justifyContent: 'center',
-        padding: 20,
+        padding: 24,
     },
     modalContent: {
-        borderRadius: 12,
+        borderRadius: 24,
         padding: 24,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.25,
-        shadowRadius: 10,
-        elevation: 10,
         maxWidth: 400,
         width: '100%',
         alignSelf: 'center',
+        alignItems: 'center',
+    },
+    iconCircle: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: 'rgba(255,255,255,0.05)',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
     },
     modalTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
+        fontSize: 20,
+        fontWeight: '700',
         marginBottom: 8,
         textAlign: 'center',
     },
     modalSubtitle: {
         fontSize: 14,
-        marginBottom: 20,
+        marginBottom: 24,
         textAlign: 'center',
         lineHeight: 20,
     },
     input: {
-        borderWidth: 1,
-        borderRadius: 6,
-        padding: 10,
-        fontSize: 14,
-        marginBottom: 20,
+        width: '100%',
+        borderRadius: 12,
+        padding: 16,
+        fontSize: 16,
+        marginBottom: 24,
     },
     modalButtons: {
         flexDirection: 'row',
         gap: 12,
+        width: '100%',
     },
     modalButton: {
         flex: 1,
-        padding: 10,
-        borderRadius: 6,
+        padding: 16,
+        borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
-        height: 44,
     },
     cancelButton: {
-        backgroundColor: '#9CA3AF',
+        backgroundColor: 'transparent',
     },
     cancelButtonText: {
-        color: '#FFFFFF',
+        color: '#9CA3AF',
         fontWeight: '600',
-        fontSize: 14,
+        fontSize: 16,
     },
     submitButtonText: {
         color: '#FFFFFF',
         fontWeight: '600',
-        fontSize: 14,
+        fontSize: 16,
     },
 });
