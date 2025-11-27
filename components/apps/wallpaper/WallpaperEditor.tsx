@@ -1,7 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
 import Slider from '@react-native-community/slider';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
+import { ArrowLeft, Camera, Image as ImageIcon } from 'lucide-react-native';
 import React, { useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Defs, FeColorMatrix, Filter, Image as SvgImage } from 'react-native-svg';
@@ -198,22 +198,33 @@ export const WallpaperEditor: React.FC<WallpaperEditorProps> = ({ theme }) => {
     if (!template) {
         return (
             <View style={[styles.container, { backgroundColor: theme.windowBg }]}>
-                <Text style={[styles.title, { color: theme.text }]}>Select Orientation</Text>
-                <View style={styles.templateContainer}>
-                    <TouchableOpacity
-                        style={[styles.templateBtn, { borderColor: theme.border, backgroundColor: theme.contentBg }]}
-                        onPress={() => setTemplate('portrait')}
-                    >
-                        <View style={[styles.aspectRatioBox, { width: 60, height: 100, backgroundColor: theme.primary }]} />
-                        <Text style={[styles.templateText, { color: theme.text }]}>Portrait (3:5)</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.templateBtn, { borderColor: theme.border, backgroundColor: theme.contentBg }]}
-                        onPress={() => setTemplate('landscape')}
-                    >
-                        <View style={[styles.aspectRatioBox, { width: 100, height: 60, backgroundColor: theme.primary }]} />
-                        <Text style={[styles.templateText, { color: theme.text }]}>Landscape (5:3)</Text>
-                    </TouchableOpacity>
+                 {/* Header for consistency */}
+                 <View style={[styles.header, { borderBottomWidth: 0 }]}>
+                    <View style={{ width: 24 }} />
+                    <Text style={[styles.headerTitle, { color: theme.text }]}>Wallpaper</Text>
+                    <View style={{ width: 24 }} />
+                </View>
+
+                <View style={styles.centerContent}>
+                    <Text style={[styles.sectionTitle, { color: theme.subText }]}>Select Orientation</Text>
+                    <View style={styles.templateContainer}>
+                        <TouchableOpacity
+                            style={[styles.templateBtn, { borderColor: theme.border, backgroundColor: theme.headerBg }]}
+                            onPress={() => setTemplate('portrait')}
+                        >
+                            <View style={[styles.aspectRatioBox, { width: 60, height: 100, backgroundColor: theme.primary }]} />
+                            <Text style={[styles.templateText, { color: theme.text }]}>Portrait</Text>
+                            <Text style={[styles.templateSubText, { color: theme.subText }]}>3:5</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.templateBtn, { borderColor: theme.border, backgroundColor: theme.headerBg }]}
+                            onPress={() => setTemplate('landscape')}
+                        >
+                            <View style={[styles.aspectRatioBox, { width: 100, height: 60, backgroundColor: theme.primary }]} />
+                            <Text style={[styles.templateText, { color: theme.text }]}>Landscape</Text>
+                             <Text style={[styles.templateSubText, { color: theme.subText }]}>5:3</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             </View>
         );
@@ -222,9 +233,9 @@ export const WallpaperEditor: React.FC<WallpaperEditorProps> = ({ theme }) => {
     if (!imageUri) {
         return (
             <View style={[styles.container, { backgroundColor: theme.windowBg }]}>
-                <View style={styles.header}>
+                <View style={[styles.header, { borderBottomColor: theme.border }]}>
                     <TouchableOpacity onPress={() => setTemplate(null)}>
-                        <Ionicons name="arrow-back" size={24} color={theme.text} />
+                        <ArrowLeft size={24} color={theme.text} />
                     </TouchableOpacity>
                     <Text style={[styles.headerTitle, { color: theme.text }]}>Select Image</Text>
                     <View style={{ width: 24 }} />
@@ -234,14 +245,14 @@ export const WallpaperEditor: React.FC<WallpaperEditorProps> = ({ theme }) => {
                         style={[styles.actionBtn, { backgroundColor: theme.primary }]}
                         onPress={() => pickImage(true)}
                     >
-                        <Ionicons name="camera" size={24} color="#FFF" />
+                        <Camera size={24} color="#FFF" />
                         <Text style={styles.actionBtnText}>Take Photo</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                        style={[styles.actionBtn, { backgroundColor: theme.contentBg, borderColor: theme.border, borderWidth: 1, marginTop: 16 }]}
+                        style={[styles.actionBtn, { backgroundColor: theme.headerBg, borderColor: theme.border, borderWidth: 1, marginTop: 16 }]}
                         onPress={() => pickImage(false)}
                     >
-                        <Ionicons name="images" size={24} color={theme.text} />
+                        <ImageIcon size={24} color={theme.text} />
                         <Text style={[styles.actionBtnText, { color: theme.text }]}>From Album</Text>
                     </TouchableOpacity>
                 </View>
@@ -251,13 +262,13 @@ export const WallpaperEditor: React.FC<WallpaperEditorProps> = ({ theme }) => {
 
     return (
         <View style={[styles.container, { backgroundColor: theme.windowBg }]}>
-            <View style={styles.header}>
+            <View style={[styles.header, { borderBottomColor: theme.border }]}>
                 <TouchableOpacity onPress={() => setImageUri(null)}>
-                    <Ionicons name="arrow-back" size={24} color={theme.text} />
+                    <ArrowLeft size={24} color={theme.text} />
                 </TouchableOpacity>
-                <Text style={[styles.headerTitle, { color: theme.text }]}>Edit Wallpaper</Text>
+                <Text style={[styles.headerTitle, { color: theme.text }]}>Edit</Text>
                 <TouchableOpacity onPress={handleSave} disabled={saving}>
-                    {saving ? <ActivityIndicator color={theme.primary} /> : <Text style={{ color: theme.primary, fontWeight: 'bold' }}>Next</Text>}
+                    {saving ? <ActivityIndicator color={theme.primary} /> : <Text style={{ color: theme.primary, fontWeight: 'bold', fontSize: 16 }}>Save</Text>}
                 </TouchableOpacity>
             </View>
 
@@ -356,12 +367,10 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
     },
-    title: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        textAlign: 'center',
-        marginTop: 40,
-        marginBottom: 20,
+    sectionTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 24,
     },
     templateContainer: {
         flexDirection: 'row',
@@ -369,17 +378,23 @@ const styles = StyleSheet.create({
         gap: 20,
     },
     templateBtn: {
-        padding: 20,
-        borderRadius: 12,
+        padding: 24,
+        borderRadius: 24,
         borderWidth: 1,
         alignItems: 'center',
+        minWidth: 120,
     },
     aspectRatioBox: {
-        marginBottom: 10,
-        borderRadius: 4,
+        marginBottom: 16,
+        borderRadius: 8,
     },
     templateText: {
         fontWeight: '600',
+        fontSize: 16,
+        marginBottom: 2,
+    },
+    templateSubText: {
+        fontSize: 13,
     },
     header: {
         flexDirection: 'row',

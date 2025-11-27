@@ -1,5 +1,5 @@
 import React from 'react';
-import { Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAvoidingView, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 interface InputModalProps {
     visible: boolean;
@@ -31,13 +31,16 @@ export const InputModal: React.FC<InputModalProps> = ({
             animationType="fade"
             onRequestClose={onClose}
         >
-            <View style={styles.modalOverlay}>
-                <View style={[styles.modalContent, { backgroundColor: theme.contentBg }]}>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                style={styles.modalOverlay}
+            >
+                <View style={[styles.modalContent, { backgroundColor: theme.headerBg, borderColor: theme.border, borderWidth: 1 }]}>
                     <Text style={[styles.modalTitle, { color: theme.text }]}>
                         {title}
                     </Text>
                     <TextInput
-                        style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.windowBg }]}
+                        style={[styles.input, { color: theme.text, backgroundColor: theme.windowBg }]}
                         value={value}
                         onChangeText={onChangeText}
                         placeholder={placeholder}
@@ -61,7 +64,7 @@ export const InputModal: React.FC<InputModalProps> = ({
                         </TouchableOpacity>
                     </View>
                 </View>
-            </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 };
@@ -69,56 +72,53 @@ export const InputModal: React.FC<InputModalProps> = ({
 const styles = StyleSheet.create({
     modalOverlay: {
         flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
+        backgroundColor: 'rgba(0,0,0,0.7)',
         justifyContent: 'center',
-        padding: 20,
+        padding: 24,
     },
     modalContent: {
-        borderRadius: 12,
+        borderRadius: 24,
         padding: 24,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.25,
-        shadowRadius: 10,
-        elevation: 10,
         maxWidth: 400,
         width: '100%',
         alignSelf: 'center',
     },
     modalTitle: {
         fontSize: 18,
-        fontWeight: 'bold',
-        marginBottom: 16,
+        fontWeight: '700',
+        marginBottom: 24,
         textAlign: 'center',
     },
     input: {
-        borderWidth: 1,
-        borderRadius: 6,
-        padding: 10,
-        fontSize: 14,
-        marginBottom: 20,
+        width: '100%',
+        borderRadius: 12,
+        padding: 16,
+        fontSize: 16,
+        marginBottom: 24,
     },
     modalButtons: {
         flexDirection: 'row',
         gap: 12,
+        width: '100%',
     },
     modalButton: {
         flex: 1,
-        padding: 10,
-        borderRadius: 6,
+        padding: 16,
+        borderRadius: 12,
         alignItems: 'center',
+        justifyContent: 'center',
     },
     cancelButton: {
-        backgroundColor: '#9CA3AF',
+        backgroundColor: 'transparent',
     },
     cancelButtonText: {
-        color: '#FFFFFF',
+        color: '#9CA3AF',
         fontWeight: '600',
-        fontSize: 14,
+        fontSize: 16,
     },
     submitButtonText: {
         color: '#FFFFFF',
         fontWeight: '600',
-        fontSize: 14,
+        fontSize: 16,
     },
 });

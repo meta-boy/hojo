@@ -1,5 +1,6 @@
+import { File, FileText, Folder, FolderOpen, Image } from 'lucide-react-native';
 import React from 'react';
-import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Dimensions, FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { FileItem } from '../utils/fileManagerApi';
 
 interface FileGridProps {
@@ -14,6 +15,20 @@ interface FileGridProps {
     onDownload: (item: FileItem) => void;
 }
 
+const getFileIcon = (item: FileItem, color: string) => {
+    if (item.type === 'dir') return <Folder size={32} color={color} fill={color + '20'} />;
+
+    const ext = item.name.split('.').pop()?.toLowerCase();
+    if (['jpg', 'jpeg', 'png', 'webp', 'bmp'].includes(ext || '')) {
+        return <Image size={32} color={color} />;
+    }
+    if (['txt', 'md', 'json', 'log'].includes(ext || '')) {
+        return <FileText size={32} color={color} />;
+    }
+
+    return <File size={32} color={color} />;
+};
+
 export const FileGrid: React.FC<FileGridProps> = ({
     theme,
     files,
@@ -25,10 +40,15 @@ export const FileGrid: React.FC<FileGridProps> = ({
     onDelete,
     onDownload,
 }) => {
+    const screenWidth = Dimensions.get('window').width;
+    const numColumns = 4;
+    const gap = 12;
+    const padding = 16;
+    const itemWidth = (screenWidth - (padding * 2) - (gap * (numColumns - 1))) / numColumns;
+
     const renderItem = ({ item }: { item: FileItem }) => (
         <TouchableOpacity
-            // removed flex: 1, added width constraint
-            style={[styles.gridItem, { borderColor: 'transparent' }]}
+            style={[styles.gridItem, { width: itemWidth }]}
             onPress={() => onNavigate(item)}
             onLongPress={() => {
                 Alert.alert(
@@ -43,10 +63,10 @@ export const FileGrid: React.FC<FileGridProps> = ({
                 );
             }}
         >
-            <View style={styles.iconContainer}>
-                <Text style={styles.gridIcon}>{item.type === 'dir' ? '📁' : '📄'}</Text>
+            <View style={[styles.iconContainer, { backgroundColor: theme.headerBg }]}>
+                {getFileIcon(item, item.type === 'dir' ? theme.primary : theme.text)}
             </View>
-            <Text style={[styles.gridItemName, { color: theme.text }]} numberOfLines={2}>
+            <Text style={[styles.gridItemName, { color: theme.subText }]} numberOfLines={2}>
                 {item.name}
             </Text>
         </TouchableOpacity>
@@ -58,7 +78,7 @@ export const FileGrid: React.FC<FileGridProps> = ({
                 data={files}
                 renderItem={renderItem}
                 keyExtractor={(item) => item.name}
-                numColumns={4}
+                numColumns={numColumns}
                 contentContainerStyle={styles.gridContent}
                 columnWrapperStyle={styles.columnWrapper}
                 refreshing={refreshing}
@@ -66,15 +86,15 @@ export const FileGrid: React.FC<FileGridProps> = ({
                 ListEmptyComponent={
                     !isLoading ? (
                         <View style={styles.emptyContainer}>
-                            <Text style={{ fontSize: 40, marginBottom: 10 }}>📭</Text>
-                            <Text style={[styles.emptyText, { color: theme.subText }]}>Empty Folder</Text>
+                            <FolderOpen size={48} color={theme.border} />
+                            <Text style={[styles.emptyText, { color: theme.subText }]}>Folder is empty</Text>
                         </View>
                     ) : null
                 }
             />
 
             {isLoading && !refreshing && (
-                <View style={styles.loadingOverlay}>
+                <View style={[styles.loadingOverlay, { backgroundColor: theme.windowBg }]}>
                     <ActivityIndicator size="large" color={theme.primary} />
                 </View>
             )}
@@ -84,44 +104,45 @@ export const FileGrid: React.FC<FileGridProps> = ({
 
 const styles = StyleSheet.create({
     gridContent: {
-        padding: 12,
+        padding: 16,
     },
     columnWrapper: {
         gap: 12,
-        justifyContent: 'flex-start', // Ensures items start from left
+        justifyContent: 'flex-start',
     },
     gridItem: {
-        // flex: 1, <--- REMOVED to stop stretching
-        width: '22%', // Added: Fits 4 items roughly (100% / 4 minus gap)
         alignItems: 'center',
         marginBottom: 16,
-        padding: 4, // Reduced padding slightly
-        borderRadius: 6,
     },
     iconContainer: {
-        marginBottom: 4,
-    },
-    gridIcon: {
-        fontSize: 40, // Reduced from 48
+        width: '100%',
+        aspectRatio: 1,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 8,
     },
     gridItemName: {
-        fontSize: 10, // Reduced from 12
+        fontSize: 11,
         textAlign: 'center',
-        lineHeight: 12, // Adjusted line height
+        lineHeight: 14,
+        fontWeight: '500',
     },
     emptyContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
         paddingTop: 100,
+        gap: 16,
     },
     emptyText: {
         fontSize: 16,
+        fontWeight: '500',
     },
     loadingOverlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: 'rgba(255,255,255,0.5)',
         justifyContent: 'center',
         alignItems: 'center',
+        opacity: 0.8,
     },
 });
