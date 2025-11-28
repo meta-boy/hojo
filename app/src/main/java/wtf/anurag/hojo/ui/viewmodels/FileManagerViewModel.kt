@@ -4,6 +4,8 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import java.io.File
+import java.io.FileOutputStream
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,12 +13,13 @@ import kotlinx.coroutines.launch
 import wtf.anurag.hojo.data.FileManagerRepository
 import wtf.anurag.hojo.data.model.FileItem
 import wtf.anurag.hojo.data.model.StorageStatus
-import java.io.File
-import java.io.FileOutputStream
+import wtf.anurag.hojo.data.model.UploadProgress
 
-class FileManagerViewModel(application: Application) : AndroidViewModel(application) {
+class FileManagerViewModel(
+        application: Application,
+        private val connectivityViewModel: ConnectivityViewModel
+) : AndroidViewModel(application) {
     private val repository = FileManagerRepository()
-    val BASE_URL = "http://192.168.3.3"
 
     private val _currentPath = MutableStateFlow("/")
     val currentPath: StateFlow<String> = _currentPath.asStateFlow()
@@ -28,12 +31,15 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     private val _storageInfo = MutableStateFlow<StorageStatus?>(null)
-    @Suppress("unused")
-    val storageInfo: StateFlow<StorageStatus?> = _storageInfo.asStateFlow()
+    @Suppress("unused") val storageInfo: StateFlow<StorageStatus?> = _storageInfo.asStateFlow()
 
     // Error message to surface to UI when fetches fail
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    // Upload progress tracking
+    private val _uploadProgress = MutableStateFlow<UploadProgress?>(null)
+    val uploadProgress: StateFlow<UploadProgress?> = _uploadProgress.asStateFlow()
 
     // Modal State
     private val _modalVisible = MutableStateFlow(false)
@@ -57,7 +63,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                val list = repository.fetchList(BASE_URL, _currentPath.value)
+                val baseUrl = connectivityViewModel.deviceBaseUrl.value
+                val list = repository.fetchList(baseUrl, _currentPath.value)
                 _files.value = list
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -71,7 +78,8 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     fun loadStatus() {
         viewModelScope.launch {
             try {
-                val status = repository.fetchStatus(BASE_URL)
+                val baseUrl = connectivityViewModel.deviceBaseUrl.value
+                val status = repository.fetchStatus(baseUrl)
                 _storageInfo.value = status
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -82,18 +90,23 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun handleNavigate(item: FileItem) {
         if (item.type == "dir") {
-            val newPath = if (_currentPath.value == "/") "/${item.name}" else "${_currentPath.value}/${item.name}"
+            val newPath =
+                    if (_currentPath.value == "/") "/${item.name}"
+                    else "${_currentPath.value}/${item.name}"
             _currentPath.value = newPath
             loadFiles()
         }
     }
 
-    fun handleGoBack() {
-        if (_currentPath.value != "/") {
+    fun handleGoBack(): Boolean {
+        return if (_currentPath.value != "/") {
             val parts = _currentPath.value.split("/").filter { it.isNotEmpty() }
             val newPath = if (parts.size <= 1) "/" else "/" + parts.dropLast(1).joinToString("/")
             _currentPath.value = newPath
             loadFiles()
+            true
+        } else {
+            false
         }
     }
 
@@ -113,8 +126,11 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
     fun handleDelete(item: FileItem) {
         viewModelScope.launch {
             try {
-                val itemPath = if (_currentPath.value == "/") "/${item.name}" else "${_currentPath.value}/${item.name}"
-                repository.deleteItem(BASE_URL, itemPath)
+                val baseUrl = connectivityViewModel.deviceBaseUrl.value
+                val itemPath =
+                        if (_currentPath.value == "/") "/${item.name}"
+                        else "${_currentPath.value}/${item.name}"
+                repository.deleteItem(baseUrl, itemPath)
                 loadFiles()
                 loadStatus()
             } catch (e: Exception) {
@@ -128,19 +144,57 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             _isLoading.value = true
             _errorMessage.value = null
+            _uploadProgress.value = null
+
+            var startTime = 0L
+            var lastUpdateTime = 0L
+            var lastBytesWritten = 0L
+
             try {
-                val targetPath = if (_currentPath.value == "/") "/$name" else "${_currentPath.value}/$name"
+                val baseUrl = connectivityViewModel.deviceBaseUrl.value
+                val targetPath =
+                        if (_currentPath.value == "/") "/$name" else "${_currentPath.value}/$name"
 
                 // Copy URI contents to a temp file in the app cache so repository can upload it
                 val app = getApplication<Application>()
                 val tempFile = File(app.cacheDir, name)
                 app.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(tempFile).use { output ->
-                        input.copyTo(output)
-                    }
-                } ?: throw IllegalArgumentException("Unable to open URI: $uri")
+                    FileOutputStream(tempFile).use { output -> input.copyTo(output) }
+                }
+                        ?: throw IllegalArgumentException("Unable to open URI: $uri")
 
-                repository.uploadFile(BASE_URL, tempFile, targetPath)
+                repository.uploadFile(baseUrl, tempFile, targetPath) { bytesWritten, totalBytes ->
+                    val currentTime = System.currentTimeMillis()
+
+                    // Initialize start time on first callback
+                    if (startTime == 0L) {
+                        startTime = currentTime
+                        lastUpdateTime = currentTime
+                        lastBytesWritten = 0L
+                    }
+
+                    // Calculate transfer speed (update every 100ms to avoid too frequent updates)
+                    val timeSinceLastUpdate = currentTime - lastUpdateTime
+                    val transferSpeed =
+                            if (timeSinceLastUpdate > 100) {
+                                val bytesSinceLastUpdate = bytesWritten - lastBytesWritten
+                                val speedBytesPerSecond =
+                                        (bytesSinceLastUpdate * 1000) / timeSinceLastUpdate
+                                lastUpdateTime = currentTime
+                                lastBytesWritten = bytesWritten
+                                speedBytesPerSecond
+                            } else {
+                                _uploadProgress.value?.transferSpeedBytesPerSecond ?: 0L
+                            }
+
+                    _uploadProgress.value =
+                            UploadProgress(
+                                    bytesUploaded = bytesWritten,
+                                    totalBytes = totalBytes,
+                                    transferSpeedBytesPerSecond = transferSpeed
+                            )
+                }
+
                 loadFiles()
                 loadStatus()
             } catch (e: Exception) {
@@ -148,6 +202,9 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
                 _errorMessage.value = "Failed to upload file: ${e.message}"
             } finally {
                 _isLoading.value = false
+                // Clear upload progress after a short delay
+                kotlinx.coroutines.delay(1000)
+                _uploadProgress.value = null
             }
         }
     }
@@ -156,13 +213,20 @@ class FileManagerViewModel(application: Application) : AndroidViewModel(applicat
         if (_inputText.value.isBlank()) return
         viewModelScope.launch {
             try {
+                val baseUrl = connectivityViewModel.deviceBaseUrl.value
                 if (_modalMode.value == "create") {
-                    val newPath = if (_currentPath.value == "/") "/${_inputText.value}" else "${_currentPath.value}/${_inputText.value}"
-                    repository.createFolder(BASE_URL, newPath)
+                    val newPath =
+                            if (_currentPath.value == "/") "/${_inputText.value}"
+                            else "${_currentPath.value}/${_inputText.value}"
+                    repository.createFolder(baseUrl, newPath)
                 } else if (_modalMode.value == "rename" && selectedItem != null) {
-                    val oldPath = if (_currentPath.value == "/") "/${selectedItem!!.name}" else "${_currentPath.value}/${selectedItem!!.name}"
-                    val newPath = if (_currentPath.value == "/") "/${_inputText.value}" else "${_currentPath.value}/${_inputText.value}"
-                    repository.renameItem(BASE_URL, oldPath, newPath)
+                    val oldPath =
+                            if (_currentPath.value == "/") "/${selectedItem!!.name}"
+                            else "${_currentPath.value}/${selectedItem!!.name}"
+                    val newPath =
+                            if (_currentPath.value == "/") "/${_inputText.value}"
+                            else "${_currentPath.value}/${_inputText.value}"
+                    repository.renameItem(baseUrl, oldPath, newPath)
                 }
                 _modalVisible.value = false
                 loadFiles()

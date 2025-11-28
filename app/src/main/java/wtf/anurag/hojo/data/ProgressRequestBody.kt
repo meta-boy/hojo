@@ -1,0 +1,40 @@
+package wtf.anurag.hojo.data
+
+import java.io.File
+import java.io.IOException
+import okhttp3.MediaType
+import okhttp3.RequestBody
+import okio.BufferedSink
+import okio.buffer
+import okio.source
+
+class ProgressRequestBody(
+        private val file: File,
+        private val contentType: MediaType?,
+        private val onProgress: (bytesWritten: Long, totalBytes: Long) -> Unit
+) : RequestBody() {
+
+    override fun contentType(): MediaType? = contentType
+
+    override fun contentLength(): Long = file.length()
+
+    @Throws(IOException::class)
+    override fun writeTo(sink: BufferedSink) {
+        val totalBytes = contentLength()
+        var bytesWritten = 0L
+
+        file.source().use { source ->
+            val buffer = sink.buffer
+            var read: Long
+            while (source.read(buffer, SEGMENT_SIZE).also { read = it } != -1L) {
+                bytesWritten += read
+                sink.flush()
+                onProgress(bytesWritten, totalBytes)
+            }
+        }
+    }
+
+    companion object {
+        private const val SEGMENT_SIZE = 8192L // 8KB chunks
+    }
+}

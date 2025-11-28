@@ -1,6 +1,7 @@
 package wtf.anurag.hojo.ui.viewmodels
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.delay
@@ -25,16 +26,22 @@ class ConnectivityViewModel(application: Application) : AndroidViewModel(applica
     private val _storageStatus = MutableStateFlow<StorageStatus?>(null)
     val storageStatus: StateFlow<StorageStatus?> = _storageStatus.asStateFlow()
 
-    val BASE_URL = "http://192.168.3.3"
+    private val _deviceBaseUrl = MutableStateFlow("http://192.168.3.3")
+    val deviceBaseUrl: StateFlow<String> = _deviceBaseUrl.asStateFlow()
+
+    private val _isDiscovering = MutableStateFlow(false)
+    val isDiscovering: StateFlow<Boolean> = _isDiscovering.asStateFlow()
 
     init {
         checkConnection()
-        // Poll for connection if not connected? Or just rely on callbacks?
-        // RN uses setInterval.
+        // Poll for connection if not connected, and refresh storage status when connected
         viewModelScope.launch {
             while (true) {
                 if (!_isConnected.value && !_isConnecting.value) {
                     handleConnect(silent = true)
+                } else if (_isConnected.value) {
+                    // Refresh storage status when connected
+                    updateDeviceStatus()
                 }
                 delay(5000)
             }
@@ -43,10 +50,14 @@ class ConnectivityViewModel(application: Application) : AndroidViewModel(applica
 
     fun checkConnection() {
         viewModelScope.launch {
-            // In a real app, we'd check actual wifi status
-            // For now, let's assume if we can hit the API, we are connected
-            // Or use the manager's isConnected logic if implemented
-            // _isConnected.value = connectivityManager.isConnected() // If we had this
+            // Check if we can hit the API with current base URL
+            try {
+                val status = repository.fetchStatus(_deviceBaseUrl.value)
+                _storageStatus.value = status
+                _isConnected.value = true
+            } catch (e: Exception) {
+                _isConnected.value = false
+            }
         }
     }
 
@@ -55,16 +66,31 @@ class ConnectivityViewModel(application: Application) : AndroidViewModel(applica
         _isConnecting.value = true
         viewModelScope.launch {
             try {
+                // First, try to connect to E-Paper hotspot
                 val success = connectivityManager.connectToEpaperHotspot()
                 if (success) {
-                    _isConnected.value = true
                     connectivityManager.bindToEpaperNetwork()
+
+                    // Try to discover device on the network
+                    _isDiscovering.value = true
+                    val discoveredIp = connectivityManager.discoverDeviceOnNetwork()
+                    if (discoveredIp != null) {
+                        Log.d("ConnectivityViewModel", "Discovered device at $discoveredIp")
+                    }
+                    _isDiscovering.value = false
+
+                    // Update base URL with discovered IP or use default
+                    _deviceBaseUrl.value = connectivityManager.getDeviceBaseUrl()
+
+                    // Verify connection and update status
+                    _isConnected.value = true
                     updateDeviceStatus()
                 }
             } catch (e: Exception) {
                 if (!silent) {
                     // Show error
                 }
+                _isDiscovering.value = false
             } finally {
                 _isConnecting.value = false
             }
@@ -77,7 +103,7 @@ class ConnectivityViewModel(application: Application) : AndroidViewModel(applica
                 if (!connectivityManager.bindToEpaperNetwork()) {
                     // Try to bind again?
                 }
-                val status = repository.fetchStatus(BASE_URL)
+                val status = repository.fetchStatus(_deviceBaseUrl.value)
                 _storageStatus.value = status
             } catch (e: Exception) {
                 e.printStackTrace()

@@ -1,5 +1,8 @@
 package wtf.anurag.hojo.ui
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -24,6 +27,7 @@ import wtf.anurag.hojo.ui.components.FileManagerToolbar
 import wtf.anurag.hojo.ui.components.InputModal
 import wtf.anurag.hojo.ui.components.QuickLinkModal
 import wtf.anurag.hojo.ui.components.StatusWidget
+import wtf.anurag.hojo.ui.components.UploadProgressIndicator
 import wtf.anurag.hojo.ui.theme.HojoTheme
 import wtf.anurag.hojo.ui.viewmodels.ConnectivityViewModel
 import wtf.anurag.hojo.ui.viewmodels.FileManagerViewModel
@@ -35,9 +39,54 @@ fun MainScreen() {
         val colors = HojoTheme.colors
 
         NavHost(navController = navController, startDestination = "home") {
-                composable("home") {
+                composable(
+                        "home",
+                        enterTransition = {
+                                slideInHorizontally(
+                                        animationSpec = tween(300),
+                                        initialOffsetX = { -it }
+                                )
+                        },
+                        exitTransition = {
+                                slideOutHorizontally(
+                                        animationSpec = tween(300),
+                                        targetOffsetX = { -it }
+                                )
+                        },
+                        popEnterTransition = {
+                                slideInHorizontally(
+                                        animationSpec = tween(300),
+                                        initialOffsetX = { -it }
+                                )
+                        },
+                        popExitTransition = {
+                                slideOutHorizontally(
+                                        animationSpec = tween(300),
+                                        targetOffsetX = { it }
+                                )
+                        }
+                ) {
                         val connectivityViewModel: ConnectivityViewModel = viewModel()
-                        val quickLinkViewModel: QuickLinkViewModel = viewModel()
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        val quickLinkViewModel: QuickLinkViewModel =
+                                viewModel(
+                                        factory =
+                                                object :
+                                                        androidx.lifecycle.ViewModelProvider.Factory {
+                                                        override fun <
+                                                                T : androidx.lifecycle.ViewModel> create(
+                                                                modelClass: Class<T>
+                                                        ): T {
+                                                                @Suppress("UNCHECKED_CAST")
+                                                                return QuickLinkViewModel(
+                                                                        context.applicationContext as
+                                                                                android.app.Application,
+                                                                        connectivityViewModel
+                                                                ) as
+                                                                        T
+                                                        }
+                                                }
+                                )
 
                         val isConnected by connectivityViewModel.isConnected.collectAsState()
                         val isConnecting by connectivityViewModel.isConnecting.collectAsState()
@@ -93,8 +142,54 @@ fun MainScreen() {
                         )
                 }
 
-                composable("file_manager") {
-                        val fileManagerViewModel: FileManagerViewModel = viewModel()
+                composable(
+                        "file_manager",
+                        enterTransition = {
+                                slideInHorizontally(
+                                        animationSpec = tween(300),
+                                        initialOffsetX = { it }
+                                )
+                        },
+                        exitTransition = {
+                                slideOutHorizontally(
+                                        animationSpec = tween(300),
+                                        targetOffsetX = { it }
+                                )
+                        },
+                        popEnterTransition = {
+                                slideInHorizontally(
+                                        animationSpec = tween(300),
+                                        initialOffsetX = { -it }
+                                )
+                        },
+                        popExitTransition = {
+                                slideOutHorizontally(
+                                        animationSpec = tween(300),
+                                        targetOffsetX = { it }
+                                )
+                        }
+                ) {
+                        val connectivityViewModel: ConnectivityViewModel = viewModel()
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        val fileManagerViewModel: FileManagerViewModel =
+                                viewModel(
+                                        factory =
+                                                object :
+                                                        androidx.lifecycle.ViewModelProvider.Factory {
+                                                        override fun <
+                                                                T : androidx.lifecycle.ViewModel> create(
+                                                                modelClass: Class<T>
+                                                        ): T {
+                                                                @Suppress("UNCHECKED_CAST")
+                                                                return FileManagerViewModel(
+                                                                        context.applicationContext as
+                                                                                android.app.Application,
+                                                                        connectivityViewModel
+                                                                ) as
+                                                                        T
+                                                        }
+                                                }
+                                )
 
                         val currentPath by fileManagerViewModel.currentPath.collectAsState()
                         val files by fileManagerViewModel.files.collectAsState()
@@ -103,9 +198,9 @@ fun MainScreen() {
                         val modalMode by fileManagerViewModel.modalMode.collectAsState()
                         val inputText by fileManagerViewModel.inputText.collectAsState()
                         val errorMessage by fileManagerViewModel.errorMessage.collectAsState()
+                        val uploadProgress by fileManagerViewModel.uploadProgress.collectAsState()
 
                         // Single launcher and context used for uploads
-                        val context = androidx.compose.ui.platform.LocalContext.current
                         val launcher =
                                 androidx.activity.compose.rememberLauncherForActivityResult(
                                         contract =
@@ -150,8 +245,9 @@ fun MainScreen() {
                                 FileManagerHeader(
                                         currentPath = currentPath,
                                         onBack = {
-                                                if (currentPath == "/") navController.popBackStack()
-                                                else fileManagerViewModel.handleGoBack()
+                                                if (!fileManagerViewModel.handleGoBack()) {
+                                                        navController.popBackStack()
+                                                }
                                         },
                                         onRefresh = { fileManagerViewModel.loadFiles() }
                                 )
@@ -162,6 +258,8 @@ fun MainScreen() {
                                         },
                                         onUpload = { launcher.launch("*/*") }
                                 )
+
+                                UploadProgressIndicator(uploadProgress = uploadProgress)
 
                                 FileGrid(
                                         files = files,
@@ -186,8 +284,32 @@ fun MainScreen() {
                         )
                 }
 
-                composable("wallpaper") {
-                        WallpaperEditor(onBack = { navController.popBackStack() })
-                }
+                composable(
+                        "wallpaper",
+                        enterTransition = {
+                                slideInHorizontally(
+                                        animationSpec = tween(300),
+                                        initialOffsetX = { it }
+                                )
+                        },
+                        exitTransition = {
+                                slideOutHorizontally(
+                                        animationSpec = tween(300),
+                                        targetOffsetX = { it }
+                                )
+                        },
+                        popEnterTransition = {
+                                slideInHorizontally(
+                                        animationSpec = tween(300),
+                                        initialOffsetX = { -it }
+                                )
+                        },
+                        popExitTransition = {
+                                slideOutHorizontally(
+                                        animationSpec = tween(300),
+                                        targetOffsetX = { it }
+                                )
+                        }
+                ) { WallpaperEditor(onBack = { navController.popBackStack() }) }
         }
 }

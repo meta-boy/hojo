@@ -5,8 +5,6 @@
 
     <!-- Allow cleartext only to the E-Paper device IP -->
     <domain-config cleartextTrafficPermitted="true">
-        <!-- IP address of the e-paper device -->
-        <domain includeSubdomains="false">192.168.3.3</domain>
     </domain-config>
 </network-security-config>
 

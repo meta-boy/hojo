@@ -18,14 +18,16 @@ import org.jsoup.Jsoup
 import wtf.anurag.hojo.connectivity.EpaperConnectivityManager
 import wtf.anurag.hojo.data.FileManagerRepository
 
-class QuickLinkViewModel(application: Application) : AndroidViewModel(application) {
+class QuickLinkViewModel(
+        application: Application,
+        private val connectivityViewModel: ConnectivityViewModel
+) : AndroidViewModel(application) {
     // EpaperConnectivityManager requires API 29+. Only instantiate on supported API levels.
     private val connectivityManager: EpaperConnectivityManager? =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
                     EpaperConnectivityManager(application)
             else null
     private val repository = FileManagerRepository()
-    val BASE_URL = "http://192.168.3.3"
 
     private val _quickLinkVisible = MutableStateFlow(false)
     val quickLinkVisible: StateFlow<Boolean> = _quickLinkVisible.asStateFlow()
@@ -59,6 +61,8 @@ class QuickLinkViewModel(application: Application) : AndroidViewModel(applicatio
 
         viewModelScope.launch {
             try {
+                val baseUrl = connectivityViewModel.deviceBaseUrl.value
+
                 // 1. Unbind to access internet
                 connectivityManager?.unbindNetwork()
 
@@ -111,14 +115,14 @@ class QuickLinkViewModel(application: Application) : AndroidViewModel(applicatio
 
                 // 5. Upload
                 // Check books folder
-                val list = repository.fetchList(BASE_URL, "/")
+                val list = repository.fetchList(baseUrl, "/")
                 if (list.none { it.name == "books" && it.type == "dir" }) {
-                    repository.createFolder(BASE_URL, "/books")
+                    repository.createFolder(baseUrl, "/books")
                 }
 
                 // Upload the generated EPUB file using the repository API (baseUrl, File,
                 // targetPath)
-                repository.uploadFile(BASE_URL, tempFile, "/books/$fileName")
+                repository.uploadFile(baseUrl, tempFile, "/books/$fileName")
 
                 _quickLinkVisible.value = false
                 _quickLinkUrl.value = ""

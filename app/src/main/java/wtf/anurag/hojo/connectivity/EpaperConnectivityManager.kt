@@ -18,8 +18,10 @@ import java.net.Socket
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
@@ -33,6 +35,7 @@ class EpaperConnectivityManager(private val context: Context) {
         private const val EPAPER_PORT = 80
         private const val SOCKET_TIMEOUT_MS = 5000
         private const val PING_TIMEOUT_MS = 3000
+        private const val DISCOVERY_TIMEOUT_MS = 1000
         private const val MAX_PING_RETRIES = 5
         private const val RETRY_DELAY_MS = 500L
         private const val TAG = "EpaperConnectivity"
@@ -46,6 +49,9 @@ class EpaperConnectivityManager(private val context: Context) {
 
     private val _isConnected = MutableStateFlow(false)
     val isConnected = _isConnected.asStateFlow()
+
+    private val _discoveredDeviceIp = MutableStateFlow<String?>(null)
+    val discoveredDeviceIp = _discoveredDeviceIp.asStateFlow()
 
     suspend fun connectToEpaperHotspot(activity: Activity? = null): Boolean =
             withContext(Dispatchers.IO) {
@@ -261,13 +267,13 @@ class EpaperConnectivityManager(private val context: Context) {
         _isConnected.value = false
     }
 
-    fun getNetworkInfo(): Map<String, Any?>? {
-        val network = epaperNetwork ?: return null
-        val capabilities = connectivityManager.getNetworkCapabilities(network)
-        val linkProperties = connectivityManager.getLinkProperties(network)
+    fun getNetworkInfo(): Map<String, Any?> {
+        val network = epaperNetwork
+        val capabilities = network?.let { connectivityManager.getNetworkCapabilities(it) }
+        val linkProperties = network?.let { connectivityManager.getLinkProperties(it) }
 
         return mapOf(
-                "connected" to true,
+                "connected" to (network != null),
                 "ssid" to EPAPER_SSID,
                 "targetIp" to EPAPER_IP,
                 "targetPort" to EPAPER_PORT,
@@ -278,5 +284,141 @@ class EpaperConnectivityManager(private val context: Context) {
                                 true),
                 "interfaceName" to linkProperties?.interfaceName
         )
+    }
+
+    /**
+     * Get the base URL for the e-paper device. Returns discovered IP if available, otherwise falls
+     * back to hardcoded IP.
+     */
+    fun getDeviceBaseUrl(): String {
+        val ip = _discoveredDeviceIp.value ?: EPAPER_IP
+        return "http://$ip"
+    }
+
+    private val nsdManager =
+            context.getSystemService(Context.NSD_SERVICE) as android.net.nsd.NsdManager
+    private var discoveryListener: android.net.nsd.NsdManager.DiscoveryListener? = null
+    private val SERVICE_TYPE = "_http._tcp."
+
+    /**
+     * Discover e-paper device on the local network using mDNS (NsdManager). Looks for services of
+     * type _http._tcp.
+     */
+    @Suppress("DEPRECATION")
+    suspend fun discoverDeviceOnNetwork(): String? =
+            withContext(Dispatchers.IO) {
+                Log.d(TAG, "discoverDeviceOnNetwork -> starting mDNS discovery")
+                _discoveredDeviceIp.value = null
+
+                return@withContext suspendCancellableCoroutine { continuation ->
+                    val listener =
+                            object : android.net.nsd.NsdManager.DiscoveryListener {
+                                override fun onDiscoveryStarted(serviceType: String) {
+                                    Log.d(TAG, "Service discovery started")
+                                }
+
+                                override fun onServiceFound(
+                                        serviceInfo: android.net.nsd.NsdServiceInfo
+                                ) {
+                                    Log.d(TAG, "Service found: $serviceInfo")
+                                    if (serviceInfo.serviceType == SERVICE_TYPE ||
+                                                    serviceInfo.serviceType == "$SERVICE_TYPE."
+                                    ) {
+                                        nsdManager.resolveService(
+                                                serviceInfo,
+                                                object :
+                                                        android.net.nsd.NsdManager.ResolveListener {
+                                                    override fun onResolveFailed(
+                                                            serviceInfo:
+                                                                    android.net.nsd.NsdServiceInfo,
+                                                            errorCode: Int
+                                                    ) {
+                                                        Log.e(TAG, "Resolve failed: $errorCode")
+                                                    }
+
+                                                    override fun onServiceResolved(
+                                                            serviceInfo:
+                                                                    android.net.nsd.NsdServiceInfo
+                                                    ) {
+                                                        Log.d(TAG, "Service resolved: $serviceInfo")
+                                                        val host = serviceInfo.host
+                                                        if (host != null) {
+                                                            val ip = host.hostAddress
+                                                            Log.d(TAG, "Resolved IP: $ip")
+                                                            if (ip != null && ip != "0.0.0.0") {
+                                                                if (continuation.isActive) {
+                                                                    _discoveredDeviceIp.value = ip
+                                                                    continuation.resume(ip)
+                                                                    stopDiscovery()
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                        )
+                                    }
+                                }
+
+                                override fun onServiceLost(
+                                        serviceInfo: android.net.nsd.NsdServiceInfo
+                                ) {
+                                    Log.e(TAG, "service lost: $serviceInfo")
+                                }
+
+                                override fun onDiscoveryStopped(serviceType: String) {
+                                    Log.i(TAG, "Discovery stopped: $serviceType")
+                                }
+
+                                override fun onStartDiscoveryFailed(
+                                        serviceType: String,
+                                        errorCode: Int
+                                ) {
+                                    Log.e(TAG, "Discovery failed: Error code:$errorCode")
+                                    nsdManager.stopServiceDiscovery(this)
+                                }
+
+                                override fun onStopDiscoveryFailed(
+                                        serviceType: String,
+                                        errorCode: Int
+                                ) {
+                                    Log.e(TAG, "Discovery failed: Error code:$errorCode")
+                                    nsdManager.stopServiceDiscovery(this)
+                                }
+                            }
+
+                    discoveryListener = listener
+                    try {
+                        nsdManager.discoverServices(
+                                SERVICE_TYPE,
+                                android.net.nsd.NsdManager.PROTOCOL_DNS_SD,
+                                listener
+                        )
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to start discovery", e)
+                        if (continuation.isActive) continuation.resume(null)
+                    }
+
+                    // Timeout for discovery
+                    @Suppress("OPT_IN_USAGE")
+                    GlobalScope.launch {
+                        kotlinx.coroutines.delay(5000) // 5 seconds timeout
+                        if (continuation.isActive) {
+                            Log.d(TAG, "Discovery timed out")
+                            stopDiscovery()
+                            continuation.resume(null)
+                        }
+                    }
+                }
+            }
+
+    private fun stopDiscovery() {
+        discoveryListener?.let {
+            try {
+                nsdManager.stopServiceDiscovery(it)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to stop discovery", e)
+            }
+            discoveryListener = null
+        }
     }
 }

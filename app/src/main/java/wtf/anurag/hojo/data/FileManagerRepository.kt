@@ -100,21 +100,29 @@ class FileManagerRepository(private val client: OkHttpClient = OkHttpClient()) {
                 }
             }
 
-    suspend fun uploadFile(baseUrl: String, file: File, targetPath: String) =
+    suspend fun uploadFile(
+            baseUrl: String,
+            file: File,
+            targetPath: String,
+            onProgress: ((bytesWritten: Long, totalBytes: Long) -> Unit)? = null
+    ) =
             withContext(Dispatchers.IO) {
                 val extension = file.extension
                 val mimeType =
                         MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)
                                 ?: "application/octet-stream"
 
+                val fileRequestBody =
+                        if (onProgress != null) {
+                            ProgressRequestBody(file, mimeType.toMediaType(), onProgress)
+                        } else {
+                            file.asRequestBody(mimeType.toMediaType())
+                        }
+
                 val body =
                         MultipartBody.Builder()
                                 .setType(MultipartBody.FORM)
-                                .addFormDataPart(
-                                        "data",
-                                        targetPath,
-                                        file.asRequestBody(mimeType.toMediaType())
-                                )
+                                .addFormDataPart("data", targetPath, fileRequestBody)
                                 .build()
 
                 val request = Request.Builder().url("$baseUrl/edit").post(body).build()
