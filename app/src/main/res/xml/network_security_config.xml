@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Deny cleartext by default -->
+    <base-config cleartextTrafficPermitted="false" />
+
+    <!-- Allow cleartext only to the E-Paper device IP -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- IP address of the e-paper device -->
+        <domain includeSubdomains="false">192.168.3.3</domain>
+    </domain-config>
+</network-security-config>
+
