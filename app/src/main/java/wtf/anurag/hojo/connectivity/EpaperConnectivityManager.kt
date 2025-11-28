@@ -52,14 +52,12 @@ class EpaperConnectivityManager(private val context: Context) {
                 // Request permissions if activity is provided
                 if (activity != null) {
                     val permissions = mutableListOf<String>()
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        if (ActivityCompat.checkSelfPermission(
-                                        activity,
-                                        Manifest.permission.ACCESS_FINE_LOCATION
-                                ) != PackageManager.PERMISSION_GRANTED
-                        ) {
-                            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
-                        }
+                    if (ActivityCompat.checkSelfPermission(
+                                    activity,
+                                    Manifest.permission.ACCESS_FINE_LOCATION
+                            ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
                     }
                     if (Build.VERSION.SDK_INT >= 33) {
                         if (ActivityCompat.checkSelfPermission(
