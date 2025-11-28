@@ -1,10 +1,12 @@
 # Hojo
 
-An Android companion app for managing e-paper displays via WiFi hotspot connectivity.
+An Android companion app for managing XTEINK X4 e-paper displays via WiFi hotspot connectivity.
 
 ## Overview
 
-Hojo is a native Android application built with Jetpack Compose that provides a seamless interface for connecting to and managing e-paper display devices. The app handles WiFi network switching, file management, and wallpaper customization for e-paper displays.
+Hojo is a native Android application built with Jetpack Compose that provides a seamless interface for connecting to and managing XTEINK X4 e-paper displays. The app handles WiFi network switching, file management, and wallpaper customization.
+
+> **Note**: This app is specifically designed for the **XTEINK X4** e-paper display and has only been tested on this device. Compatibility with other e-paper displays is not guaranteed.
 
 ## Features
 
@@ -100,9 +102,9 @@ cd hojo
 
 The release APK will be generated at `app/build/outputs/apk/release/`
 
-## E-Paper Device Configuration
+## XTEINK X4 Device Configuration
 
-The app is configured to connect to e-paper devices with the following default settings:
+The app is configured to connect to the XTEINK X4 e-paper display with the following default settings:
 
 - **SSID**: `E-Paper`
 - **Password**: `12345678`
