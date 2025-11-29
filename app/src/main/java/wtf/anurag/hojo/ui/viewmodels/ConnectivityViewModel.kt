@@ -1,7 +1,9 @@
 package wtf.anurag.hojo.ui.viewmodels
 
 import android.app.Application
+import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -12,6 +14,7 @@ import wtf.anurag.hojo.connectivity.EpaperConnectivityManager
 import wtf.anurag.hojo.data.FileManagerRepository
 import wtf.anurag.hojo.data.model.StorageStatus
 
+@RequiresApi(Build.VERSION_CODES.Q)
 class ConnectivityViewModel(application: Application) : AndroidViewModel(application) {
     private val connectivityManager = EpaperConnectivityManager(application)
     private val repository = FileManagerRepository()
@@ -50,6 +53,7 @@ class ConnectivityViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun handleConnect(silent: Boolean = false) {
         if (_isConnecting.value) return
         _isConnecting.value = true
@@ -86,6 +90,7 @@ class ConnectivityViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun updateDeviceStatus() {
         viewModelScope.launch {
             try {
