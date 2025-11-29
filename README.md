@@ -24,13 +24,13 @@ Hojo is a native Android application built with Jetpack Compose that provides a 
 - Download files from the e-paper device
 
 ### 🎨 Wallpaper Editor
-- Create custom wallpapers optimized for e-paper displays (480x600px, 4:5 aspect ratio)
+- Create custom wallpapers optimized for e-paper displays (480x800px, 3:5 aspect ratio)
 - Image cropping and editing tools
 - Direct upload to e-paper device
 
 ### 🔗 Quick Link
-- Convert web URLs to e-paper compatible format
-- Direct upload to device for quick content display
+- Convert web articles to EPUB format using dotEPUB
+- Uploads to /books directory on device for quick content display
 
 ## Technical Stack
 
@@ -48,6 +48,7 @@ Hojo is a native Android application built with Jetpack Compose that provides a 
 - OkHttp for networking
 - Gson for JSON parsing
 - Jsoup for HTML parsing
+- Android Image Cropper for image editing
 
 ## Project Structure
 
@@ -119,6 +120,7 @@ The app requires the following permissions:
 - `INTERNET` - For network communication
 - `ACCESS_WIFI_STATE` - To check WiFi status
 - `CHANGE_WIFI_STATE` - To connect to e-paper hotspot
+- `CHANGE_WIFI_MULTICAST_STATE` - Required for some network discovery operations
 - `ACCESS_NETWORK_STATE` - To monitor network connectivity
 - `CHANGE_NETWORK_STATE` - To bind to specific networks
 - `NEARBY_WIFI_DEVICES` - For WiFi device discovery (Android 13+)
