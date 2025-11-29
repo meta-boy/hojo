@@ -1,10 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-    <!-- Deny cleartext by default -->
-    <base-config cleartextTrafficPermitted="false" />
-
-    <!-- Allow cleartext only to the E-Paper device IP -->
-    <domain-config cleartextTrafficPermitted="true">
-    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>
-
