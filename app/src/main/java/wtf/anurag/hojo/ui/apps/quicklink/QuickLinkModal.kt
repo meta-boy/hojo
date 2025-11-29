@@ -1,4 +1,4 @@
-package wtf.anurag.hojo.ui.components
+package wtf.anurag.hojo.ui.apps.quicklink
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border

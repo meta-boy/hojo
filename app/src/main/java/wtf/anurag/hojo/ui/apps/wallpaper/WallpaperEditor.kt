@@ -1,10 +1,6 @@
 package wtf.anurag.hojo.ui.apps.wallpaper
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.ColorMatrixColorFilter
-import android.graphics.Paint
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,13 +18,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.CircularProgressIndicator
@@ -37,364 +33,70 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix as ComposeColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import java.io.File
 import java.io.FileOutputStream
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import wtf.anurag.hojo.data.FileManagerRepository
 import wtf.anurag.hojo.ui.theme.HojoTheme
-
-data class FilterState(
-        val grayscale: Float = 0f,
-        val contrast: Float = 50f,
-        val brightness: Float = 100f,
-        val saturation: Float = 100f
-)
-
-val DEFAULT_FILTERS = FilterState()
-val INK_SCREEN_PRESET =
-        FilterState(grayscale = 0f, contrast = 130f, brightness = 100f, saturation = 50f)
+import wtf.anurag.hojo.ui.viewmodels.DEFAULT_FILTERS
+import wtf.anurag.hojo.ui.viewmodels.INK_SCREEN_PRESET
+import wtf.anurag.hojo.ui.viewmodels.WallpaperViewModel
 
 @Composable
-fun WallpaperEditor(onBack: () -> Unit, baseUrl: String = "http://192.168.3.3") {
+fun WallpaperEditor(
+        onBack: () -> Unit,
+        baseUrl: String = "http://192.168.3.3",
+        viewModel: WallpaperViewModel = viewModel()
+) {
         val colors = HojoTheme.colors
         val context = LocalContext.current
-        val scope = rememberCoroutineScope()
 
-        // State
-        var template by remember { mutableStateOf<String?>(null) } // "portrait" or "landscape"
-        var imageUri by remember { mutableStateOf<Uri?>(null) }
-        var filters by remember { mutableStateOf(DEFAULT_FILTERS) }
-        var saving by remember { mutableStateOf(false) }
-        var bitmap by remember { mutableStateOf<Bitmap?>(null) }
-        var errorMessage by remember { mutableStateOf<String?>(null) }
-
-        // Load bitmap when uri changes
-        LaunchedEffect(imageUri) {
-                imageUri?.let { uri ->
-                        with(context.contentResolver) {
-                                openInputStream(uri)?.use { stream ->
-                                        bitmap = BitmapFactory.decodeStream(stream)
-                                }
-                        }
-                }
-        }
+        // State from ViewModel
+        val template by viewModel.template.collectAsState()
+        val imageUri by viewModel.imageUri.collectAsState()
+        val filters by viewModel.filters.collectAsState()
+        val saving by viewModel.saving.collectAsState()
+        val bitmap by viewModel.bitmap.collectAsState()
+        val errorMessage by viewModel.errorMessage.collectAsState()
 
         val launcher =
                 rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.GetContent()
-                ) { uri: Uri? -> imageUri = uri }
+                ) { uri: Uri? -> viewModel.setImageUri(uri) }
 
         val takePictureLauncher =
                 rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.TakePicturePreview()
                 ) { bmp: Bitmap? ->
-                        // Save to temp file to get URI or just use bitmap directly
-                        // For simplicity, we'll just use the bitmap directly if possible, but our
-                        // logic
-                        // uses URI.
-                        // Let's just assume gallery pick for now as camera requires FileProvider
-                        // setup
-                        // which is complex.
-                        // Or we can just use the bitmap.
-                        bitmap = bmp
                         if (bmp != null) {
                                 // Create a temp uri
                                 val file = File(context.cacheDir, "temp_cam.jpg")
                                 FileOutputStream(file).use { out ->
                                         bmp.compress(Bitmap.CompressFormat.JPEG, 100, out)
                                 }
-                                imageUri = Uri.fromFile(file)
+                                viewModel.setImageUri(Uri.fromFile(file))
                         }
-                }
-
-        // Helper to generate color matrix
-        fun generateColorMatrix(f: FilterState): ComposeColorMatrix {
-                // We'll build a 4x5 color matrix as a FloatArray (20 elements) and return
-                // an androidx.compose.ui.graphics.ColorMatrix from it. This avoids using
-                // android.graphics.ColorMatrix APIs which are not available on the Compose
-                // ColorMatrix type.
-                fun identity(): FloatArray =
-                        floatArrayOf(
-                                1f,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                1f,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                1f,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                1f,
-                                0f
-                        )
-
-                fun multiply(a: FloatArray, b: FloatArray): FloatArray {
-                        // a and b are 4x5 matrices stored row-major (4 rows * 5 cols)
-                        val out = FloatArray(20)
-                        for (i in 0 until 4) {
-                                val ai0 = a[i * 5 + 0]
-                                val ai1 = a[i * 5 + 1]
-                                val ai2 = a[i * 5 + 2]
-                                val ai3 = a[i * 5 + 3]
-                                val ai4 = a[i * 5 + 4]
-                                for (j in 0 until 4) {
-                                        // compute sum_k a[i][k] * b[k][j]
-                                        out[i * 5 + j] =
-                                                ai0 * b[0 * 5 + j] +
-                                                        ai1 * b[1 * 5 + j] +
-                                                        ai2 * b[2 * 5 + j] +
-                                                        ai3 * b[3 * 5 + j]
-                                }
-                                // translation column
-                                out[i * 5 + 4] =
-                                        ai0 * b[0 * 5 + 4] +
-                                                ai1 * b[1 * 5 + 4] +
-                                                ai2 * b[2 * 5 + 4] +
-                                                ai3 * b[3 * 5 + 4] +
-                                                ai4
-                        }
-                        return out
-                }
-
-                fun saturationMatrix(s: Float): FloatArray {
-                        val invSat = 1f - s
-                        val r = 0.213f * invSat
-                        val g = 0.715f * invSat
-                        val b = 0.072f * invSat
-                        return floatArrayOf(
-                                r + s,
-                                g,
-                                b,
-                                0f,
-                                0f,
-                                r,
-                                g + s,
-                                b,
-                                0f,
-                                0f,
-                                r,
-                                g,
-                                b + s,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                1f,
-                                0f
-                        )
-                }
-
-                fun scaleMatrix(s: Float): FloatArray =
-                        floatArrayOf(
-                                s,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                s,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                s,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                0f,
-                                1f,
-                                0f
-                        )
-
-                fun contrastMatrix(c: Float): FloatArray {
-                        val t = (1.0f - c) / 2.0f * 255f
-                        return floatArrayOf(
-                                c,
-                                0f,
-                                0f,
-                                0f,
-                                t,
-                                0f,
-                                c,
-                                0f,
-                                0f,
-                                t,
-                                0f,
-                                0f,
-                                c,
-                                0f,
-                                t,
-                                0f,
-                                0f,
-                                0f,
-                                1f,
-                                0f
-                        )
-                }
-
-                // Build matrices from filters
-                val sat = f.saturation / 100f
-                val brightness = f.brightness / 100f
-                val contrast = f.contrast / 50f
-                val gray = f.grayscale / 100f
-
-                var result = identity()
-
-                // Apply saturation
-                result = multiply(result, saturationMatrix(sat))
-                // Apply brightness (scale)
-                result = multiply(result, scaleMatrix(brightness))
-                // Apply contrast
-                result = multiply(result, contrastMatrix(contrast))
-                // Apply grayscale mix if requested (by mixing saturation down)
-                if (gray > 0f) {
-                        val graySat = 1f - gray
-                        result = multiply(result, saturationMatrix(graySat))
-                }
-
-                return ComposeColorMatrix(result)
-        }
-
-        // Helper to apply filters to bitmap and save
-        suspend fun saveAndUpload() =
-                withContext(Dispatchers.IO) {
-                        val bmp = bitmap ?: throw IllegalStateException("No bitmap to save")
-
-                        // Apply filters to bitmap using Android's ColorMatrix
-                        val sat = filters.saturation / 100f
-                        val brightness = filters.brightness / 100f
-                        val contrast = filters.contrast / 50f
-                        val gray = filters.grayscale / 100f
-
-                        val colorMatrix = android.graphics.ColorMatrix()
-
-                        // Apply saturation
-                        colorMatrix.setSaturation(sat)
-
-                        // Apply brightness (scale)
-                        val brightnessMatrix =
-                                android.graphics.ColorMatrix(
-                                        floatArrayOf(
-                                                brightness,
-                                                0f,
-                                                0f,
-                                                0f,
-                                                0f,
-                                                0f,
-                                                brightness,
-                                                0f,
-                                                0f,
-                                                0f,
-                                                0f,
-                                                0f,
-                                                brightness,
-                                                0f,
-                                                0f,
-                                                0f,
-                                                0f,
-                                                0f,
-                                                1f,
-                                                0f
-                                        )
-                                )
-                        colorMatrix.postConcat(brightnessMatrix)
-
-                        // Apply contrast
-                        val t = (1.0f - contrast) / 2.0f * 255f
-                        val contrastMatrix =
-                                android.graphics.ColorMatrix(
-                                        floatArrayOf(
-                                                contrast,
-                                                0f,
-                                                0f,
-                                                0f,
-                                                t,
-                                                0f,
-                                                contrast,
-                                                0f,
-                                                0f,
-                                                t,
-                                                0f,
-                                                0f,
-                                                contrast,
-                                                0f,
-                                                t,
-                                                0f,
-                                                0f,
-                                                0f,
-                                                1f,
-                                                0f
-                                        )
-                                )
-                        colorMatrix.postConcat(contrastMatrix)
-
-                        // Apply grayscale if needed
-                        if (gray > 0f) {
-                                val graySat = 1f - gray
-                                val grayMatrix = android.graphics.ColorMatrix()
-                                grayMatrix.setSaturation(graySat)
-                                colorMatrix.postConcat(grayMatrix)
-                        }
-
-                        // Create filtered bitmap
-                        val filteredBitmap =
-                                Bitmap.createBitmap(bmp.width, bmp.height, Bitmap.Config.ARGB_8888)
-                        val canvas = Canvas(filteredBitmap)
-                        val paint = Paint()
-                        paint.colorFilter = ColorMatrixColorFilter(colorMatrix)
-                        canvas.drawBitmap(bmp, 0f, 0f, paint)
-
-                        // Save to temp file as JPEG
-                        val timestamp = System.currentTimeMillis()
-                        val filename = "wallpaper_$timestamp.jpg"
-                        val tempFile = File(context.cacheDir, filename)
-                        FileOutputStream(tempFile).use { out ->
-                                filteredBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
-                        }
-
-                        // Upload to e-paper device
-                        val repository = FileManagerRepository()
-                        val targetPath = "/backgrounds/$filename"
-                        repository.uploadFile(baseUrl, tempFile, targetPath)
-
-                        // Clean up
-                        filteredBitmap.recycle()
                 }
 
         if (template == null) {
-                Column(modifier = Modifier.fillMaxSize().background(colors.windowBg)) {
+                Column(
+                        modifier =
+                                Modifier.fillMaxSize()
+                                        .background(colors.windowBg)
+                                        .statusBarsPadding()
+                ) {
                         // Header
                         Row(
                                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -433,7 +135,11 @@ fun WallpaperEditor(onBack: () -> Unit, baseUrl: String = "http://192.168.3.3") 
                                                                         colors.border,
                                                                         RoundedCornerShape(24.dp)
                                                                 )
-                                                                .clickable { template = "portrait" }
+                                                                .clickable {
+                                                                        viewModel.setTemplate(
+                                                                                "portrait"
+                                                                        )
+                                                                }
                                                                 .padding(24.dp),
                                                 horizontalAlignment = Alignment.CenterHorizontally
                                         ) {
@@ -474,7 +180,9 @@ fun WallpaperEditor(onBack: () -> Unit, baseUrl: String = "http://192.168.3.3") 
                                                                         RoundedCornerShape(24.dp)
                                                                 )
                                                                 .clickable {
-                                                                        template = "landscape"
+                                                                        viewModel.setTemplate(
+                                                                                "landscape"
+                                                                        )
                                                                 }
                                                                 .padding(24.dp),
                                                 horizontalAlignment = Alignment.CenterHorizontally
@@ -511,7 +219,12 @@ fun WallpaperEditor(onBack: () -> Unit, baseUrl: String = "http://192.168.3.3") 
         }
 
         if (imageUri == null) {
-                Column(modifier = Modifier.fillMaxSize().background(colors.windowBg)) {
+                Column(
+                        modifier =
+                                Modifier.fillMaxSize()
+                                        .background(colors.windowBg)
+                                        .statusBarsPadding()
+                ) {
                         // Header
                         Row(
                                 modifier =
@@ -529,7 +242,9 @@ fun WallpaperEditor(onBack: () -> Unit, baseUrl: String = "http://192.168.3.3") 
                                         contentDescription = "Back",
                                         tint = colors.text,
                                         modifier =
-                                                Modifier.size(24.dp).clickable { template = null }
+                                                Modifier.size(24.dp).clickable {
+                                                        viewModel.setTemplate(null)
+                                                }
                                 )
                                 Text(
                                         text = "Select Image",
@@ -623,7 +338,7 @@ fun WallpaperEditor(onBack: () -> Unit, baseUrl: String = "http://192.168.3.3") 
         }
 
         // Editor
-        Column(modifier = Modifier.fillMaxSize().background(colors.windowBg)) {
+        Column(modifier = Modifier.fillMaxSize().background(colors.windowBg).statusBarsPadding()) {
                 // Header
                 Row(
                         modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -655,19 +370,9 @@ fun WallpaperEditor(onBack: () -> Unit, baseUrl: String = "http://192.168.3.3") 
                                         fontSize = 16.sp,
                                         modifier =
                                                 Modifier.clickable {
-                                                        saving = true
-                                                        errorMessage = null
-                                                        scope.launch {
-                                                                try {
-                                                                        saveAndUpload()
-                                                                        // Success - navigate back
-                                                                        onBack()
-                                                                } catch (e: Exception) {
-                                                                        e.printStackTrace()
-                                                                        errorMessage =
-                                                                                "Failed to save: ${e.message}"
-                                                                        saving = false
-                                                                }
+                                                        viewModel.saveAndUpload(baseUrl) {
+                                                                // Success - navigate back
+                                                                onBack()
                                                         }
                                                 }
                                 )
@@ -710,7 +415,9 @@ fun WallpaperEditor(onBack: () -> Unit, baseUrl: String = "http://192.168.3.3") 
                                                 contentScale = ContentScale.Crop,
                                                 colorFilter =
                                                         ColorFilter.colorMatrix(
-                                                                generateColorMatrix(filters)
+                                                                viewModel.generateColorMatrix(
+                                                                        filters
+                                                                )
                                                         )
                                         )
                                 }
@@ -735,7 +442,9 @@ fun WallpaperEditor(onBack: () -> Unit, baseUrl: String = "http://192.168.3.3") 
                                                 color = colors.primary,
                                                 modifier =
                                                         Modifier.clickable {
-                                                                filters = DEFAULT_FILTERS
+                                                                viewModel.setFilters(
+                                                                        DEFAULT_FILTERS
+                                                                )
                                                         }
                                         )
                                         Box(
@@ -743,7 +452,9 @@ fun WallpaperEditor(onBack: () -> Unit, baseUrl: String = "http://192.168.3.3") 
                                                         Modifier.clip(RoundedCornerShape(16.dp))
                                                                 .background(colors.primary)
                                                                 .clickable {
-                                                                        filters = INK_SCREEN_PRESET
+                                                                        viewModel.setFilters(
+                                                                                INK_SCREEN_PRESET
+                                                                        )
                                                                 }
                                                                 .padding(
                                                                         vertical = 6.dp,
@@ -753,16 +464,16 @@ fun WallpaperEditor(onBack: () -> Unit, baseUrl: String = "http://192.168.3.3") 
                                 }
 
                                 FilterSlider("Grayscale", filters.grayscale, 0f, 100f) {
-                                        filters = filters.copy(grayscale = it)
+                                        viewModel.setFilters(filters.copy(grayscale = it))
                                 }
                                 FilterSlider("Contrast", filters.contrast, 0f, 150f) {
-                                        filters = filters.copy(contrast = it)
+                                        viewModel.setFilters(filters.copy(contrast = it))
                                 }
                                 FilterSlider("Brightness", filters.brightness, 0f, 200f) {
-                                        filters = filters.copy(brightness = it)
+                                        viewModel.setFilters(filters.copy(brightness = it))
                                 }
                                 FilterSlider("Saturation", filters.saturation, 0f, 200f) {
-                                        filters = filters.copy(saturation = it)
+                                        viewModel.setFilters(filters.copy(saturation = it))
                                 }
                         }
                 }
