@@ -2,6 +2,8 @@ package wtf.anurag.hojo.ui.apps.wallpaper
 
 import android.graphics.Bitmap
 import android.net.Uri
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -26,15 +28,22 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -46,7 +55,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.canhub.cropper.CropImageView
 import java.io.File
 import java.io.FileOutputStream
 import wtf.anurag.hojo.ui.theme.HojoTheme
@@ -71,10 +82,18 @@ fun WallpaperEditor(
         val bitmap by viewModel.bitmap.collectAsState()
         val errorMessage by viewModel.errorMessage.collectAsState()
 
+        // Local state for cropping
+        var croppingUri by remember { mutableStateOf<Uri?>(null) }
+        var cropImageView: CropImageView? by remember { mutableStateOf(null) }
+
         val launcher =
                 rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.GetContent()
-                ) { uri: Uri? -> viewModel.setImageUri(uri) }
+                ) { uri: Uri? ->
+                        if (uri != null) {
+                                croppingUri = uri
+                        }
+                }
 
         val takePictureLauncher =
                 rememberLauncherForActivityResult(
@@ -86,9 +105,110 @@ fun WallpaperEditor(
                                 FileOutputStream(file).use { out ->
                                         bmp.compress(Bitmap.CompressFormat.JPEG, 100, out)
                                 }
-                                viewModel.setImageUri(Uri.fromFile(file))
+                                croppingUri = Uri.fromFile(file)
                         }
                 }
+
+        if (croppingUri != null) {
+                val isPortrait = template == "portrait"
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                        AndroidView(
+                                modifier = Modifier.fillMaxSize().padding(bottom = 80.dp),
+                                factory = { ctx ->
+                                        CropImageView(ctx).apply {
+                                                layoutParams =
+                                                        FrameLayout.LayoutParams(
+                                                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                                                ViewGroup.LayoutParams.MATCH_PARENT
+                                                        )
+                                                setImageUriAsync(croppingUri)
+                                                setAspectRatio(
+                                                        if (isPortrait) 3 else 5,
+                                                        if (isPortrait) 5 else 3
+                                                )
+                                                setFixedAspectRatio(true)
+                                                guidelines = CropImageView.Guidelines.ON
+                                                cropImageView = this
+                                        }
+                                }
+                        )
+
+                        // Crop Controls
+                        Row(
+                                modifier =
+                                        Modifier.fillMaxWidth()
+                                                .align(Alignment.BottomCenter)
+                                                .background(colors.windowBg)
+                                                .padding(16.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                        ) {
+                                IconButton(onClick = { croppingUri = null }) {
+                                        Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Cancel",
+                                                tint = colors.error
+                                        )
+                                }
+                                Text(
+                                        "Crop Image",
+                                        color = colors.text,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 18.sp
+                                )
+                                IconButton(
+                                        onClick = {
+                                                cropImageView?.let { view ->
+                                                        val reqWidth = if (isPortrait) 480 else 800
+                                                        val reqHeight = if (isPortrait) 800 else 480
+                                                        val cropped =
+                                                                view.getCroppedImage(
+                                                                        reqWidth,
+                                                                        reqHeight
+                                                                )
+                                                        if (cropped != null) {
+                                                                // Save cropped bitmap to file to
+                                                                // get URI
+                                                                // Or just pass bitmap to ViewModel
+                                                                // if it supports it
+                                                                // ViewModel currently takes URI and
+                                                                // loads bitmap.
+                                                                // Let's modify ViewModel to accept
+                                                                // Bitmap or just save to temp file
+                                                                // here.
+
+                                                                // Saving to temp file
+                                                                val file =
+                                                                        File(
+                                                                                context.cacheDir,
+                                                                                "cropped_temp.jpg"
+                                                                        )
+                                                                FileOutputStream(file).use { out ->
+                                                                        cropped.compress(
+                                                                                Bitmap.CompressFormat
+                                                                                        .JPEG,
+                                                                                100,
+                                                                                out
+                                                                        )
+                                                                }
+                                                                viewModel.setImageUri(
+                                                                        Uri.fromFile(file)
+                                                                )
+                                                                croppingUri = null
+                                                        }
+                                                }
+                                        }
+                                ) {
+                                        Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = "Done",
+                                                tint = colors.primary
+                                        )
+                                }
+                        }
+                }
+                return
+        }
 
         if (template == null) {
                 Column(

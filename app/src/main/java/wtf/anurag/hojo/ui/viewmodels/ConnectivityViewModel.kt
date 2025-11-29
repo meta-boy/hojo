@@ -4,7 +4,6 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,18 +33,8 @@ class ConnectivityViewModel(application: Application) : AndroidViewModel(applica
 
     init {
         checkConnection()
-        // Poll for connection if not connected, and refresh storage status when connected
-        viewModelScope.launch {
-            while (true) {
-                if (!_isConnected.value && !_isConnecting.value) {
-                    handleConnect(silent = true)
-                } else if (_isConnected.value) {
-                    // Refresh storage status when connected
-                    updateDeviceStatus()
-                }
-                delay(5000)
-            }
-        }
+        // Only try to connect once on init, do not loop aggressively
+        handleConnect(silent = true)
     }
 
     fun checkConnection() {
