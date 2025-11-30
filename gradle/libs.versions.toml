@@ -14,6 +14,7 @@ gson = "2.10.1"
 jsoup = "1.17.2"
 navCompose = "2.8.3"
 imageCropper = "4.7.0"
+epublib = "3.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -36,9 +37,9 @@ gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navCompose" }
 android-image-cropper = { group = "com.vanniktech", name = "android-image-cropper", version.ref = "imageCropper" }
+epublib = { group = "com.positiondev.epublib", name = "epublib-core", version.ref = "epublib" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-

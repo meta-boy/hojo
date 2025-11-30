@@ -71,6 +71,9 @@ dependencies {
     implementation(libs.gson)
     implementation(libs.jsoup)
     implementation(libs.android.image.cropper)
+    implementation(libs.epublib) {
+        exclude(group = "xmlpull", module = "xmlpull")
+    }
 
     // --- Testing Dependencies ---
     testImplementation(libs.junit)

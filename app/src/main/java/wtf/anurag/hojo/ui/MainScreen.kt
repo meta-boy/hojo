@@ -120,6 +120,8 @@ fun MainScreen() {
                                                                         .setQuickLinkVisible(true)
                                                         "Wallpaper Editor" ->
                                                                 navController.navigate("wallpaper")
+                                                        "Converter" ->
+                                                                navController.navigate("converter")
                                                 }
                                         }
                                 )
@@ -203,6 +205,40 @@ fun MainScreen() {
                         WallpaperEditor(
                                 onBack = { navController.popBackStack() },
                                 baseUrl = deviceBaseUrl
+                        )
+                }
+
+                composable(
+                        "converter",
+                        enterTransition = {
+                                slideInHorizontally(
+                                        animationSpec = tween(300),
+                                        initialOffsetX = { it }
+                                )
+                        },
+                        exitTransition = {
+                                slideOutHorizontally(
+                                        animationSpec = tween(300),
+                                        targetOffsetX = { it }
+                                )
+                        },
+                        popEnterTransition = {
+                                slideInHorizontally(
+                                        animationSpec = tween(300),
+                                        initialOffsetX = { -it }
+                                )
+                        },
+                        popExitTransition = {
+                                slideOutHorizontally(
+                                        animationSpec = tween(300),
+                                        targetOffsetX = { it }
+                                )
+                        }
+                ) {
+                        val connectivityViewModel: ConnectivityViewModel = viewModel()
+                        wtf.anurag.hojo.ui.apps.converter.ConverterApp(
+                                onBack = { navController.popBackStack() },
+                                connectivityViewModel = connectivityViewModel
                         )
                 }
         }
