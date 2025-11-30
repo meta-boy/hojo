@@ -152,12 +152,34 @@ class NativeConverter {
 
             var yOffset = 0
             while (yOffset < layout.height) {
+                val proposedBottom = yOffset + contentHeight
+                var nextOffset = proposedBottom
+
+                if (proposedBottom < layout.height) {
+                    val lineIndex = layout.getLineForVertical(proposedBottom)
+                    val lineTop = layout.getLineTop(lineIndex)
+
+                    if (lineTop < proposedBottom && lineTop > yOffset) {
+                        nextOffset = lineTop
+                    }
+                }
+
                 val bitmap = Bitmap.createBitmap(480, 800, Bitmap.Config.ARGB_8888)
                 val canvas = Canvas(bitmap)
                 canvas.drawColor(Color.WHITE)
 
                 canvas.save()
-                canvas.translate(settings.margin.toFloat(), settings.margin.toFloat() - yOffset)
+                // Clip to ensure we don't draw partial lines from the next page
+                canvas.clipRect(
+                        0,
+                        0,
+                        480,
+                        (nextOffset - yOffset + settings.margin).coerceAtMost(800)
+                )
+                canvas.translate(
+                        settings.margin.toFloat(),
+                        settings.margin.toFloat() - yOffset.toFloat()
+                )
                 layout.draw(canvas)
                 canvas.restore()
 
@@ -172,7 +194,7 @@ class NativeConverter {
                 val xtgData = encodeXtg(bitmap)
                 pages.add(xtgData)
 
-                yOffset += contentHeight
+                yOffset = nextOffset
                 pageCount++
                 onProgress(pageCount, -1) // Total unknown
             }
