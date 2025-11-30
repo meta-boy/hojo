@@ -41,6 +41,25 @@ class EpaperConnectivityManager(private val context: Context) {
         private const val TAG = "EpaperConnectivity"
     }
 
+    private val isEmulator: Boolean
+        get() =
+                (Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic")) ||
+                        Build.FINGERPRINT.startsWith("generic") ||
+                        Build.FINGERPRINT.startsWith("unknown") ||
+                        Build.HARDWARE.contains("goldfish") ||
+                        Build.HARDWARE.contains("ranchu") ||
+                        Build.MODEL.contains("google_sdk") ||
+                        Build.MODEL.contains("Emulator") ||
+                        Build.MODEL.contains("Android SDK built for x86") ||
+                        Build.MANUFACTURER.contains("Genymotion") ||
+                        Build.PRODUCT.contains("sdk_google") ||
+                        Build.PRODUCT.contains("google_sdk") ||
+                        Build.PRODUCT.contains("sdk") ||
+                        Build.PRODUCT.contains("sdk_x86") ||
+                        Build.PRODUCT.contains("vbox86p") ||
+                        Build.PRODUCT.contains("emulator") ||
+                        Build.PRODUCT.contains("simulator")
+
     private val connectivityManager =
             context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
@@ -55,6 +74,11 @@ class EpaperConnectivityManager(private val context: Context) {
 
     suspend fun connectToEpaperHotspot(activity: Activity? = null): Boolean =
             withContext(Dispatchers.IO) {
+                if (isEmulator) {
+                    Log.d(TAG, "connectToEpaperHotspot -> skipping on emulator")
+                    return@withContext false
+                }
+
                 // Request permissions if activity is provided
                 if (activity != null) {
                     val permissions = mutableListOf<String>()
@@ -148,6 +172,10 @@ class EpaperConnectivityManager(private val context: Context) {
 
     suspend fun bindToEpaperNetwork(): Boolean =
             withContext(Dispatchers.IO) {
+                if (isEmulator) {
+                    Log.d(TAG, "bindToEpaperNetwork -> skipping on emulator")
+                    return@withContext false
+                }
                 val network =
                         epaperNetwork
                                 ?: run {
@@ -176,6 +204,10 @@ class EpaperConnectivityManager(private val context: Context) {
 
     suspend fun testEpaperConnection(): Boolean =
             withContext(Dispatchers.IO) {
+                if (isEmulator) {
+                    Log.d(TAG, "testEpaperConnection -> skipping on emulator")
+                    return@withContext false
+                }
                 try {
                     val socket = Socket()
                     val socketAddress = InetSocketAddress(EPAPER_IP, EPAPER_PORT)
