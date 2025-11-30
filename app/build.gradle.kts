@@ -73,6 +73,10 @@ dependencies {
     implementation(libs.android.image.cropper)
     implementation(libs.epublib) {
         exclude(group = "xmlpull", module = "xmlpull")
+        exclude(group = "net.sf.kxml", module = "kxml2")
+    }
+    implementation("net.sf.kxml:kxml2:2.3.0") {
+        exclude(group = "xmlpull", module = "xmlpull")
     }
 
     // --- Testing Dependencies ---
@@ -87,4 +91,16 @@ dependencies {
     // Debugging and Tooling
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+
+android {
+    packaging {
+        resources {
+            excludes += "org/xmlpull/v1/**"
+        }
+    }
+    configurations.all {
+        exclude(group = "xmlpull", module = "xmlpull")
+    }
 }
