@@ -31,7 +31,7 @@ class NativeConverter {
 
         // 1. Render Pages
         val spineReferences = book.spine.spineReferences
-        var totalPagesEstimate = spineReferences.size * 5 // Rough estimate
+
         var pageCount = 0
 
         val textPaint =
@@ -43,6 +43,12 @@ class NativeConverter {
 
         for (ref in spineReferences) {
             val resource = ref.resource
+
+            // Skip TOC page
+            if (resource.id == "toc") {
+                continue
+            }
+
             val htmlContent = String(resource.data, charset("UTF-8"))
 
             // Extract body content using Jsoup to clean up a bit

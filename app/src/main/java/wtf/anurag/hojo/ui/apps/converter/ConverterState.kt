@@ -15,7 +15,7 @@ sealed class ConverterStatus {
     object Idle : ConverterStatus()
     object ReadingFile : ConverterStatus()
     data class Converting(val progress: Int, val total: Int) : ConverterStatus()
-    data class Success(val outputFile: File) : ConverterStatus()
+    data class Success(val outputFile: File, val isSaved: Boolean = false) : ConverterStatus()
     object Uploading : ConverterStatus()
     object UploadSuccess : ConverterStatus()
     data class Error(val message: String) : ConverterStatus()

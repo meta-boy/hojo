@@ -198,7 +198,7 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                                                                                 HojoTheme.colors
                                                                                         .primary
                                                                 )
-                                                ) { Text("Upload to E-Paper") }
+                                                ) { Text("Upload") }
                                         },
                                         dismissButton = {
                                                 Row {
@@ -208,8 +208,15 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                                                                                 successStatus
                                                                                         .outputFile
                                                                         )
-                                                                }
-                                                        ) { Text("Save to Downloads") }
+                                                                },
+                                                                enabled = !successStatus.isSaved
+                                                        ) {
+                                                                Text(
+                                                                        if (successStatus.isSaved)
+                                                                                "Saved"
+                                                                        else "Save to Downloads"
+                                                                )
+                                                        }
                                                         TextButton(onClick = { onBack() }) {
                                                                 Text("Exit")
                                                         }

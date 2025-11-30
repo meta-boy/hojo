@@ -141,6 +141,11 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun saveToDownloads(file: File) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+            _status.value = ConverterStatus.Error("Save to Downloads requires Android 10+")
+            return
+        }
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val contentValues =
@@ -159,8 +164,18 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
                     resolver.openOutputStream(uri)?.use { output ->
                         FileInputStream(file).use { input -> input.copyTo(output) }
                     }
-                    // We can keep the success state but maybe show a toast?
-                    // For now, let's just keep the state as Success.
+                    withContext(Dispatchers.Main) {
+                        android.widget.Toast.makeText(
+                                        getApplication(),
+                                        "Saved to Downloads",
+                                        android.widget.Toast.LENGTH_SHORT
+                                )
+                                .show()
+                        val currentStatus = _status.value
+                        if (currentStatus is ConverterStatus.Success) {
+                            _status.value = currentStatus.copy(isSaved = true)
+                        }
+                    }
                 } else {
                     withContext(Dispatchers.Main) {
                         _status.value = ConverterStatus.Error("Failed to create file in Downloads")
