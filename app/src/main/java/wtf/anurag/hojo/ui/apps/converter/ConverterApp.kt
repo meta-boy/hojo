@@ -108,7 +108,11 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                                         )
 
                                         // Settings
-                                        SettingsSection(settings) { viewModel.updateSettings(it) }
+                                        val availableFonts by
+                                                viewModel.availableFonts.collectAsState()
+                                        SettingsSection(settings, availableFonts) {
+                                                viewModel.updateSettings(it)
+                                        }
 
                                         Spacer(modifier = Modifier.height(24.dp))
 
@@ -229,7 +233,11 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
 }
 
 @Composable
-fun SettingsSection(settings: ConverterSettings, onUpdate: (ConverterSettings) -> Unit) {
+fun SettingsSection(
+        settings: ConverterSettings,
+        availableFonts: List<java.io.File>,
+        onUpdate: (ConverterSettings) -> Unit
+) {
         Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
                         "Settings",
@@ -237,6 +245,60 @@ fun SettingsSection(settings: ConverterSettings, onUpdate: (ConverterSettings) -
                         fontSize = 18.sp,
                         color = HojoTheme.colors.text
                 )
+
+                // Font Selection
+                var expanded by remember { mutableStateOf(false) }
+                Box(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                        OutlinedButton(
+                                onClick = { expanded = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors =
+                                        ButtonDefaults.outlinedButtonColors(
+                                                contentColor = HojoTheme.colors.text
+                                        )
+                        ) {
+                                Text(
+                                        text =
+                                                if (settings.fontFamily.isNotEmpty())
+                                                        settings.fontFamily.split("/").last()
+                                                else "Default Font"
+                                )
+                        }
+                        DropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false },
+                                modifier = Modifier.background(HojoTheme.colors.windowBg)
+                        ) {
+                                DropdownMenuItem(
+                                        text = {
+                                                Text("Default Font", color = HojoTheme.colors.text)
+                                        },
+                                        onClick = {
+                                                onUpdate(settings.copy(fontFamily = ""))
+                                                expanded = false
+                                        }
+                                )
+                                availableFonts.forEach { font ->
+                                        DropdownMenuItem(
+                                                text = {
+                                                        Text(
+                                                                font.name,
+                                                                color = HojoTheme.colors.text
+                                                        )
+                                                },
+                                                onClick = {
+                                                        onUpdate(
+                                                                settings.copy(
+                                                                        fontFamily =
+                                                                                font.absolutePath
+                                                                )
+                                                        )
+                                                        expanded = false
+                                                }
+                                        )
+                                }
+                        }
+                }
 
                 // Font Size
                 Text("Font Size: ${settings.fontSize}%", color = HojoTheme.colors.subText)

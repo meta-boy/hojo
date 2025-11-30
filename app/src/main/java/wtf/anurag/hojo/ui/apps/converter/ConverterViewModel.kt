@@ -31,6 +31,31 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
     private val _selectedFile = MutableStateFlow<Uri?>(null)
     val selectedFile: StateFlow<Uri?> = _selectedFile.asStateFlow()
 
+    private val _availableFonts = MutableStateFlow<List<File>>(emptyList())
+    val availableFonts: StateFlow<List<File>> = _availableFonts.asStateFlow()
+
+    init {
+        loadFonts()
+    }
+
+    private fun loadFonts() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val fontsDir = File("/system/fonts")
+            if (fontsDir.exists() && fontsDir.isDirectory) {
+                val fonts =
+                        fontsDir
+                                .listFiles { file ->
+                                    file.extension.equals("ttf", ignoreCase = true) ||
+                                            file.extension.equals("otf", ignoreCase = true)
+                                }
+                                ?.toList()
+                                ?.sortedBy { it.name }
+                                ?: emptyList()
+                _availableFonts.value = fonts
+            }
+        }
+    }
+
     fun selectFile(uri: Uri) {
         _selectedFile.value = uri
         _status.value = ConverterStatus.Idle

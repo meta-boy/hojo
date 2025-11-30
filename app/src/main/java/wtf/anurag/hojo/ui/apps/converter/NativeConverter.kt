@@ -5,11 +5,16 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.text.Html
 import android.text.Layout
+import android.text.SpannableStringBuilder
+import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.style.MetricAffectingSpan
 import java.io.InputStream
 import java.net.URI
 import java.nio.ByteBuffer
@@ -39,6 +44,13 @@ class NativeConverter {
                     isAntiAlias = true
                     textSize = 16f * (settings.fontSize / 100f)
                     color = Color.BLACK
+                    if (settings.fontFamily.isNotEmpty()) {
+                        try {
+                            typeface = android.graphics.Typeface.createFromFile(settings.fontFamily)
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
                 }
 
         for (ref in spineReferences) {
@@ -106,10 +118,30 @@ class NativeConverter {
             // Convert HTML to Spanned
             val spanned = Html.fromHtml(bodyHtml, Html.FROM_HTML_MODE_COMPACT, imageGetter, null)
 
+            val finalSpanned =
+                    if (textPaint.typeface != null && settings.fontFamily.isNotEmpty()) {
+                        val ssb = SpannableStringBuilder(spanned)
+                        ssb.setSpan(
+                                CustomTypefaceSpan(textPaint.typeface),
+                                0,
+                                ssb.length,
+                                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                        )
+                        ssb
+                    } else {
+                        spanned
+                    }
+
             // Layout
             val width = 480 - (settings.margin * 2)
             val layout =
-                    StaticLayout.Builder.obtain(spanned, 0, spanned.length, textPaint, width)
+                    StaticLayout.Builder.obtain(
+                                    finalSpanned,
+                                    0,
+                                    finalSpanned.length,
+                                    textPaint,
+                                    width
+                            )
                             .setAlignment(Layout.Alignment.ALIGN_NORMAL)
                             .setLineSpacing(0f, settings.lineHeight)
                             .setIncludePad(true)
@@ -336,4 +368,29 @@ class NativeConverter {
     }
 
     data class ChapterInfo(val name: String, val startPage: Int, val endPage: Int)
+
+    private class CustomTypefaceSpan(private val typeface: Typeface) : MetricAffectingSpan() {
+        override fun updateDrawState(ds: TextPaint) {
+            applyCustomTypeface(ds, typeface)
+        }
+
+        override fun updateMeasureState(paint: TextPaint) {
+            applyCustomTypeface(paint, typeface)
+        }
+
+        private fun applyCustomTypeface(paint: Paint, tf: Typeface) {
+            val old = paint.typeface
+            val oldStyle = old?.style ?: 0
+
+            val fake = oldStyle and tf.style.inv()
+            if (fake and Typeface.BOLD != 0) {
+                paint.isFakeBoldText = true
+            }
+            if (fake and Typeface.ITALIC != 0) {
+                paint.textSkewX = -0.25f
+            }
+
+            paint.typeface = tf
+        }
+    }
 }
