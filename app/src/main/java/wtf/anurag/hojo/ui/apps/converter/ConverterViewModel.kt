@@ -38,9 +38,17 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
         loadFonts()
     }
 
+    private fun getFontsDir(): File {
+        val dir = File(getApplication<Application>().filesDir, "imported_fonts")
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
+
     private fun loadFonts() {
         viewModelScope.launch(Dispatchers.IO) {
-            val fontsDir = File("/system/fonts")
+            val fontsDir = getFontsDir()
             if (fontsDir.exists() && fontsDir.isDirectory) {
                 val fonts =
                         fontsDir
@@ -52,6 +60,23 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
                                 ?.sortedBy { it.name }
                                 ?: emptyList()
                 _availableFonts.value = fonts
+            }
+        }
+    }
+
+    fun importFont(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val fileName = getFileName(uri)
+                val inputStream = getApplication<Application>().contentResolver.openInputStream(uri)
+                if (inputStream != null) {
+                    val fontsDir = getFontsDir()
+                    val destFile = File(fontsDir, fileName)
+                    FileOutputStream(destFile).use { output -> inputStream.copyTo(output) }
+                    loadFonts()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
     }

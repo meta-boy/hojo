@@ -50,6 +50,12 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                         onResult = { uri -> uri?.let { viewModel.selectFile(it) } }
                 )
 
+        val fontPickerLauncher =
+                rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.OpenDocument(),
+                        onResult = { uri -> uri?.let { viewModel.importFont(it) } }
+                )
+
         Column(
                 modifier =
                         Modifier.fillMaxSize()
@@ -110,9 +116,21 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                                         // Settings
                                         val availableFonts by
                                                 viewModel.availableFonts.collectAsState()
-                                        SettingsSection(settings, availableFonts) {
-                                                viewModel.updateSettings(it)
-                                        }
+                                        SettingsSection(
+                                                settings,
+                                                availableFonts,
+                                                onUpdate = { viewModel.updateSettings(it) },
+                                                onImportFont = {
+                                                        fontPickerLauncher.launch(
+                                                                arrayOf(
+                                                                        "font/ttf",
+                                                                        "font/otf",
+                                                                        "application/x-font-ttf",
+                                                                        "application/x-font-otf"
+                                                                )
+                                                        )
+                                                }
+                                        )
 
                                         Spacer(modifier = Modifier.height(24.dp))
 
@@ -236,7 +254,8 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
 fun SettingsSection(
         settings: ConverterSettings,
         availableFonts: List<java.io.File>,
-        onUpdate: (ConverterSettings) -> Unit
+        onUpdate: (ConverterSettings) -> Unit,
+        onImportFont: () -> Unit
 ) {
         Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
@@ -299,6 +318,15 @@ fun SettingsSection(
                                 }
                         }
                 }
+
+                Button(
+                        onClick = onImportFont,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        colors =
+                                ButtonDefaults.buttonColors(
+                                        containerColor = HojoTheme.colors.primary
+                                )
+                ) { Text("Import Font") }
 
                 // Font Size
                 Text("Font Size: ${settings.fontSize}%", color = HojoTheme.colors.subText)
