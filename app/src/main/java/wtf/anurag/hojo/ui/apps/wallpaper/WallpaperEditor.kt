@@ -65,11 +65,13 @@ import wtf.anurag.hojo.ui.viewmodels.DEFAULT_FILTERS
 import wtf.anurag.hojo.ui.viewmodels.INK_SCREEN_PRESET
 import wtf.anurag.hojo.ui.viewmodels.WallpaperViewModel
 
+import androidx.hilt.navigation.compose.hiltViewModel
+
 @Composable
 fun WallpaperEditor(
         onBack: () -> Unit,
         baseUrl: String = "http://192.168.3.3",
-        viewModel: WallpaperViewModel = viewModel()
+        viewModel: WallpaperViewModel = hiltViewModel()
 ) {
         val colors = HojoTheme.colors
         val context = LocalContext.current
