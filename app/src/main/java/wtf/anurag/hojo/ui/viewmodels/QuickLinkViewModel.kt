@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URL
@@ -14,20 +15,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
 import org.jsoup.Jsoup
-import wtf.anurag.hojo.connectivity.EpaperConnectivityManager
+import wtf.anurag.hojo.data.ConnectivityRepository
 import wtf.anurag.hojo.data.FileManagerRepository
+import javax.inject.Inject
 
-class QuickLinkViewModel(
-        application: Application,
-        private val connectivityViewModel: ConnectivityViewModel
+@HiltViewModel
+class QuickLinkViewModel @Inject constructor(
+    application: Application,
+    private val repository: FileManagerRepository,
+    private val connectivityRepository: ConnectivityRepository,
+    private val okHttpClient: OkHttpClient
 ) : AndroidViewModel(application) {
-    // EpaperConnectivityManager requires API 29+. Only instantiate on supported API levels.
-    private val connectivityManager: EpaperConnectivityManager? =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                    EpaperConnectivityManager(application)
-            else null
-    private val repository = FileManagerRepository()
 
     private val _quickLinkVisible = MutableStateFlow(false)
     val quickLinkVisible: StateFlow<Boolean> = _quickLinkVisible.asStateFlow()
@@ -61,10 +61,10 @@ class QuickLinkViewModel(
 
         viewModelScope.launch {
             try {
-                val baseUrl = connectivityViewModel.deviceBaseUrl.value
+                val baseUrl = connectivityRepository.deviceBaseUrl.value
 
                 // 1. Unbind to access internet
-                connectivityManager?.unbindNetwork()
+                connectivityRepository.unbindNetwork()
 
                 // 2. Fetch HTML and Parse
                 val html = withContext(Dispatchers.IO) { URL(_quickLinkUrl.value).readText() }
@@ -76,10 +76,6 @@ class QuickLinkViewModel(
 
                 // 3. Send to dotEPUB
                 // Multipart request
-                // This is tricky without a library that handles multipart easily like OkHttp's
-                // MultipartBody
-                // But we have OkHttp!
-                val client = okhttp3.OkHttpClient()
                 val requestBody =
                         okhttp3.MultipartBody.Builder()
                                 .setType(okhttp3.MultipartBody.FORM)
@@ -99,7 +95,7 @@ class QuickLinkViewModel(
                                 .post(requestBody)
                                 .build()
 
-                val response = withContext(Dispatchers.IO) { client.newCall(request).execute() }
+                val response = withContext(Dispatchers.IO) { okHttpClient.newCall(request).execute() }
 
                 if (!response.isSuccessful) throw Exception("Conversion failed: ${response.code}")
 
@@ -111,7 +107,7 @@ class QuickLinkViewModel(
                 withContext(Dispatchers.IO) { FileOutputStream(tempFile).use { it.write(bytes) } }
 
                 // 4. Rebind to Epaper
-                connectivityManager?.bindToEpaperNetwork()
+                connectivityRepository.bindToEpaperNetwork()
 
                 // 5. Upload
                 // Check books folder
@@ -142,7 +138,7 @@ class QuickLinkViewModel(
                 _converting.value = false
                 // Ensure rebind
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    connectivityManager?.bindToEpaperNetwork()
+                    connectivityRepository.bindToEpaperNetwork()
                 }
             }
         }

@@ -4,35 +4,26 @@ import android.app.Application
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.MutableStateFlow
+import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import wtf.anurag.hojo.connectivity.EpaperConnectivityManager
-import wtf.anurag.hojo.data.FileManagerRepository
+import wtf.anurag.hojo.data.ConnectivityRepository
 import wtf.anurag.hojo.data.model.StorageStatus
+import javax.inject.Inject
 
+@HiltViewModel
 @RequiresApi(Build.VERSION_CODES.Q)
-class ConnectivityViewModel(application: Application) : AndroidViewModel(application) {
-    private val connectivityManager = EpaperConnectivityManager(application)
-    private val repository = FileManagerRepository()
+class ConnectivityViewModel @Inject constructor(
+    private val connectivityRepository: ConnectivityRepository
+) : ViewModel() {
 
-    private val _isConnected = MutableStateFlow(false)
-    val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
-
-    private val _isConnecting = MutableStateFlow(false)
-    val isConnecting: StateFlow<Boolean> = _isConnecting.asStateFlow()
-
-    private val _storageStatus = MutableStateFlow<StorageStatus?>(null)
-    val storageStatus: StateFlow<StorageStatus?> = _storageStatus.asStateFlow()
-
-    private val _deviceBaseUrl = MutableStateFlow("http://192.168.3.3")
-    val deviceBaseUrl: StateFlow<String> = _deviceBaseUrl.asStateFlow()
-
-    private val _isDiscovering = MutableStateFlow(false)
-    val isDiscovering: StateFlow<Boolean> = _isDiscovering.asStateFlow()
+    val isConnected: StateFlow<Boolean> = connectivityRepository.isConnected
+    val isConnecting: StateFlow<Boolean> = connectivityRepository.isConnecting
+    val storageStatus: StateFlow<StorageStatus?> = connectivityRepository.storageStatus
+    val deviceBaseUrl: StateFlow<String> = connectivityRepository.deviceBaseUrl
+    val isDiscovering: StateFlow<Boolean> = connectivityRepository.isDiscovering
 
     init {
         checkConnection()
@@ -42,66 +33,21 @@ class ConnectivityViewModel(application: Application) : AndroidViewModel(applica
 
     fun checkConnection() {
         viewModelScope.launch {
-            // Check if we can hit the API with current base URL
-            try {
-                val status = repository.fetchStatus(_deviceBaseUrl.value)
-                _storageStatus.value = status
-                _isConnected.value = true
-            } catch (e: Exception) {
-                _isConnected.value = false
-            }
+            connectivityRepository.checkConnection()
         }
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
     fun handleConnect(silent: Boolean = false) {
-        if (_isConnecting.value) return
-        _isConnecting.value = true
         viewModelScope.launch {
-            try {
-                // First, try to connect to E-Paper hotspot
-                val success = connectivityManager.connectToEpaperHotspot()
-                if (success) {
-                    connectivityManager.bindToEpaperNetwork()
-
-                    // Try to discover device on the network
-                    _isDiscovering.value = true
-                    val discoveredIp = connectivityManager.discoverDeviceOnNetwork()
-                    if (discoveredIp != null) {
-                        Log.d("ConnectivityViewModel", "Discovered device at $discoveredIp")
-                    }
-                    _isDiscovering.value = false
-
-                    // Update base URL with discovered IP or use default
-                    _deviceBaseUrl.value = connectivityManager.getDeviceBaseUrl()
-
-                    // Verify connection and update status
-                    _isConnected.value = true
-                    updateDeviceStatus()
-                }
-            } catch (e: Exception) {
-                if (!silent) {
-                    // Show error
-                }
-                _isDiscovering.value = false
-            } finally {
-                _isConnecting.value = false
-            }
+            connectivityRepository.handleConnect(silent)
         }
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
     fun updateDeviceStatus() {
         viewModelScope.launch {
-            try {
-                if (!connectivityManager.bindToEpaperNetwork()) {
-                    // Try to bind again?
-                }
-                val status = repository.fetchStatus(_deviceBaseUrl.value)
-                _storageStatus.value = status
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            connectivityRepository.updateDeviceStatus()
         }
     }
 }
