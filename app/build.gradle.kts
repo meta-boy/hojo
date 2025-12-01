@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.kotlin.android)
     // Apply the Kotlin Compose compiler plugin (from [plugins] section)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.hilt.android)
+    id("kotlin-kapt")
 }
 
 android {
@@ -65,6 +67,11 @@ dependencies {
 
     // Navigation
     implementation(libs.androidx.navigation.compose)
+
+    // --- Hilt ---
+    implementation(libs.hilt.android)
+    kapt(libs.hilt.compiler)
+    implementation(libs.androidx.hilt.navigation.compose)
 
     // --- Third-party Libraries ---
     implementation(libs.okhttp)

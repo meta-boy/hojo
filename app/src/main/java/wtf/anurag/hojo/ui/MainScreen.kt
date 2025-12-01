@@ -15,7 +15,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -61,27 +61,8 @@ fun MainScreen() {
                                 )
                         }
                 ) {
-                        val connectivityViewModel: ConnectivityViewModel = viewModel()
-                        val context = androidx.compose.ui.platform.LocalContext.current
-                        val quickLinkViewModel: QuickLinkViewModel =
-                                viewModel(
-                                        factory =
-                                                object :
-                                                        androidx.lifecycle.ViewModelProvider.Factory {
-                                                        override fun <
-                                                                T : androidx.lifecycle.ViewModel> create(
-                                                                modelClass: Class<T>
-                                                        ): T {
-                                                                @Suppress("UNCHECKED_CAST")
-                                                                return QuickLinkViewModel(
-                                                                        context.applicationContext as
-                                                                                android.app.Application,
-                                                                        connectivityViewModel
-                                                                ) as
-                                                                        T
-                                                        }
-                                                }
-                                )
+                        val connectivityViewModel: ConnectivityViewModel = hiltViewModel()
+                        val quickLinkViewModel: QuickLinkViewModel = hiltViewModel()
 
                         val isConnected by connectivityViewModel.isConnected.collectAsState()
                         val isConnecting by connectivityViewModel.isConnecting.collectAsState()
@@ -166,7 +147,7 @@ fun MainScreen() {
                                 )
                         }
                 ) {
-                        val connectivityViewModel: ConnectivityViewModel = viewModel()
+                        val connectivityViewModel: ConnectivityViewModel = hiltViewModel()
                         FileManagerApp(
                                 onBack = { navController.popBackStack() },
                                 connectivityViewModel = connectivityViewModel
@@ -200,7 +181,7 @@ fun MainScreen() {
                                 )
                         }
                 ) {
-                        val connectivityViewModel: ConnectivityViewModel = viewModel()
+                        val connectivityViewModel: ConnectivityViewModel = hiltViewModel()
                         val deviceBaseUrl by connectivityViewModel.deviceBaseUrl.collectAsState()
                         WallpaperEditor(
                                 onBack = { navController.popBackStack() },
@@ -235,7 +216,7 @@ fun MainScreen() {
                                 )
                         }
                 ) {
-                        val connectivityViewModel: ConnectivityViewModel = viewModel()
+                        val connectivityViewModel: ConnectivityViewModel = hiltViewModel()
                         wtf.anurag.hojo.ui.apps.converter.ConverterApp(
                                 onBack = { navController.popBackStack() },
                                 connectivityViewModel = connectivityViewModel

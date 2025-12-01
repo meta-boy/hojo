@@ -25,8 +25,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
+import javax.inject.Inject
+
 @RequiresApi(Build.VERSION_CODES.Q)
-class EpaperConnectivityManager(private val context: Context) {
+class EpaperConnectivityManager @Inject constructor(private val context: Context) {
 
     companion object {
         private const val EPAPER_SSID = "E-Paper"
