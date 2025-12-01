@@ -16,8 +16,9 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import wtf.anurag.hojo.data.model.FileItem
 import wtf.anurag.hojo.data.model.StorageStatus
+import javax.inject.Inject
 
-class FileManagerRepository(private val client: OkHttpClient = OkHttpClient()) {
+class FileManagerRepository @Inject constructor(private val client: OkHttpClient) {
     private val gson = Gson()
     private val TAG = "FileManagerRepo"
 

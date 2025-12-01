@@ -8,6 +8,7 @@ import android.provider.MediaStore
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -17,10 +18,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import wtf.anurag.hojo.data.ConnectivityRepository
 import wtf.anurag.hojo.data.FileManagerRepository
-import wtf.anurag.hojo.ui.viewmodels.ConnectivityViewModel
+import javax.inject.Inject
 
-class ConverterViewModel(application: Application) : AndroidViewModel(application) {
+@HiltViewModel
+class ConverterViewModel @Inject constructor(
+    application: Application,
+    private val repository: FileManagerRepository,
+    private val connectivityRepository: ConnectivityRepository
+) : AndroidViewModel(application) {
 
     private val _status = MutableStateFlow<ConverterStatus>(ConverterStatus.Idle)
     val status: StateFlow<ConverterStatus> = _status.asStateFlow()
@@ -163,16 +170,14 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
         _selectedFile.value = null
     }
 
-    fun uploadToEpaper(file: File, connectivityViewModel: ConnectivityViewModel) {
+    fun uploadToEpaper(file: File) {
         viewModelScope.launch {
             try {
                 _status.value = ConverterStatus.Uploading
 
-                val baseUrl = connectivityViewModel.deviceBaseUrl.value
+                val baseUrl = connectivityRepository.deviceBaseUrl.value
                 val fileName = file.name
                 val targetPath = "/books/$fileName"
-
-                val repository = FileManagerRepository()
 
                 // Ensure /books directory exists
                 try {

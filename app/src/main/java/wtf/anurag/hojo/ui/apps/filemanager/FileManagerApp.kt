@@ -11,32 +11,18 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import wtf.anurag.hojo.ui.theme.HojoTheme
 import wtf.anurag.hojo.ui.viewmodels.ConnectivityViewModel
 import wtf.anurag.hojo.ui.viewmodels.FileManagerViewModel
 
 @Composable
-fun FileManagerApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewModel = viewModel()) {
+fun FileManagerApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewModel = hiltViewModel()) {
     val context = LocalContext.current
     val colors = HojoTheme.colors
 
-    val fileManagerViewModel: FileManagerViewModel =
-            viewModel(
-                    factory =
-                            object : androidx.lifecycle.ViewModelProvider.Factory {
-                                override fun <T : androidx.lifecycle.ViewModel> create(
-                                        modelClass: Class<T>
-                                ): T {
-                                    @Suppress("UNCHECKED_CAST")
-                                    return FileManagerViewModel(
-                                            context.applicationContext as android.app.Application,
-                                            connectivityViewModel
-                                    ) as
-                                            T
-                                }
-                            }
-            )
+    val fileManagerViewModel: FileManagerViewModel = hiltViewModel()
 
     val currentPath by fileManagerViewModel.currentPath.collectAsState()
     val files by fileManagerViewModel.files.collectAsState()

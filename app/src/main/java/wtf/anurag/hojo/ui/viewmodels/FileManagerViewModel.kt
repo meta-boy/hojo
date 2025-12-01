@@ -4,22 +4,26 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import wtf.anurag.hojo.data.ConnectivityRepository
 import wtf.anurag.hojo.data.FileManagerRepository
 import wtf.anurag.hojo.data.model.FileItem
 import wtf.anurag.hojo.data.model.StorageStatus
 import wtf.anurag.hojo.data.model.UploadProgress
+import javax.inject.Inject
 
-class FileManagerViewModel(
-        application: Application,
-        private val connectivityViewModel: ConnectivityViewModel
+@HiltViewModel
+class FileManagerViewModel @Inject constructor(
+    application: Application,
+    private val repository: FileManagerRepository,
+    private val connectivityRepository: ConnectivityRepository
 ) : AndroidViewModel(application) {
-    private val repository = FileManagerRepository()
 
     private val _currentPath = MutableStateFlow("/")
     val currentPath: StateFlow<String> = _currentPath.asStateFlow()
@@ -63,7 +67,7 @@ class FileManagerViewModel(
             _isLoading.value = true
             _errorMessage.value = null
             try {
-                val baseUrl = connectivityViewModel.deviceBaseUrl.value
+                val baseUrl = connectivityRepository.deviceBaseUrl.value
                 val list = repository.fetchList(baseUrl, _currentPath.value)
                 _files.value = list
             } catch (e: Exception) {
@@ -78,7 +82,7 @@ class FileManagerViewModel(
     fun loadStatus() {
         viewModelScope.launch {
             try {
-                val baseUrl = connectivityViewModel.deviceBaseUrl.value
+                val baseUrl = connectivityRepository.deviceBaseUrl.value
                 val status = repository.fetchStatus(baseUrl)
                 _storageInfo.value = status
             } catch (e: Exception) {
@@ -126,7 +130,7 @@ class FileManagerViewModel(
     fun handleDelete(item: FileItem) {
         viewModelScope.launch {
             try {
-                val baseUrl = connectivityViewModel.deviceBaseUrl.value
+                val baseUrl = connectivityRepository.deviceBaseUrl.value
                 val itemPath =
                         if (_currentPath.value == "/") "/${item.name}"
                         else "${_currentPath.value}/${item.name}"
@@ -151,7 +155,7 @@ class FileManagerViewModel(
             var lastBytesWritten = 0L
 
             try {
-                val baseUrl = connectivityViewModel.deviceBaseUrl.value
+                val baseUrl = connectivityRepository.deviceBaseUrl.value
                 val targetPath =
                         if (_currentPath.value == "/") "/$name" else "${_currentPath.value}/$name"
 
@@ -213,7 +217,7 @@ class FileManagerViewModel(
         if (_inputText.value.isBlank()) return
         viewModelScope.launch {
             try {
-                val baseUrl = connectivityViewModel.deviceBaseUrl.value
+                val baseUrl = connectivityRepository.deviceBaseUrl.value
                 if (_modalMode.value == "create") {
                     val newPath =
                             if (_currentPath.value == "/") "/${_inputText.value}"

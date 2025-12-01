@@ -17,28 +17,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 import wtf.anurag.hojo.ui.theme.HojoTheme
 import wtf.anurag.hojo.ui.viewmodels.ConnectivityViewModel
 
 @Composable
-fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewModel = viewModel()) {
+fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewModel = hiltViewModel()) {
         val context = LocalContext.current
-        val viewModel: ConverterViewModel =
-                viewModel(
-                        factory =
-                                object : androidx.lifecycle.ViewModelProvider.Factory {
-                                        override fun <T : androidx.lifecycle.ViewModel> create(
-                                                modelClass: Class<T>
-                                        ): T {
-                                                return ConverterViewModel(
-                                                        context.applicationContext as
-                                                                android.app.Application
-                                                ) as
-                                                        T
-                                        }
-                                }
-                )
+        val viewModel: ConverterViewModel = hiltViewModel()
 
         val status by viewModel.status.collectAsState()
         val settings by viewModel.settings.collectAsState()
@@ -210,8 +197,7 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                                                 Button(
                                                         onClick = {
                                                                 viewModel.uploadToEpaper(
-                                                                        successStatus.outputFile,
-                                                                        connectivityViewModel
+                                                                        successStatus.outputFile
                                                                 )
                                                         },
                                                         colors =
