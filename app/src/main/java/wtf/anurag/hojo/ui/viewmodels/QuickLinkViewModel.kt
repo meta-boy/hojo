@@ -51,6 +51,9 @@ class QuickLinkViewModel @Inject constructor(
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    private val _previewFile = MutableStateFlow<File?>(null)
+    val previewFile: StateFlow<File?> = _previewFile.asStateFlow()
+
     fun setQuickLinkVisible(visible: Boolean) {
         _quickLinkVisible.value = visible
     }
@@ -167,15 +170,13 @@ class QuickLinkViewModel @Inject constructor(
     }
 
     @RequiresApi(Build.VERSION_CODES.Q)
-    fun handleConvertAndUpload() {
+    fun handleConvert() {
         if (_quickLinkUrl.value.isBlank()) return
         _converting.value = true
         _errorMessage.value = null // Clear previous errors
 
         viewModelScope.launch {
             try {
-                val baseUrl = connectivityRepository.deviceBaseUrl.value
-
                 // 1. Unbind to access internet
                 connectivityRepository.unbindNetwork()
 
@@ -211,16 +212,8 @@ class QuickLinkViewModel @Inject constructor(
                 // 5. Rebind to Epaper
                 connectivityRepository.bindToEpaperNetwork()
 
-                // 6. Upload
-                // Check books folder
-                val list = repository.fetchList(baseUrl, "/")
-                if (list.none { it.name == "books" && it.type == "dir" }) {
-                    repository.createFolder(baseUrl, "/books")
-                }
-
-                // Upload the generated XTC file using the repository API
-                repository.uploadFile(baseUrl, tempFile, "/books/$fileName")
-
+                // Show preview
+                _previewFile.value = tempFile
                 _quickLinkVisible.value = false
                 _quickLinkUrl.value = ""
             } catch (e: Exception) {
@@ -233,13 +226,45 @@ class QuickLinkViewModel @Inject constructor(
                                     "Failed to convert page. The content may be empty or unsupported."
                             else -> "Error: ${e.message ?: "Unknown error occurred"}"
                         }
-            } finally {
-                _converting.value = false
-                // Ensure rebind
+                // Ensure rebind on error
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     connectivityRepository.bindToEpaperNetwork()
                 }
+            } finally {
+                _converting.value = false
             }
         }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun uploadPreviewFile() {
+        val file = _previewFile.value ?: return
+
+        viewModelScope.launch {
+            try {
+                _converting.value = true
+                val baseUrl = connectivityRepository.deviceBaseUrl.value
+
+                // Check books folder
+                val list = repository.fetchList(baseUrl, "/")
+                if (list.none { it.name == "books" && it.type == "dir" }) {
+                    repository.createFolder(baseUrl, "/books")
+                }
+
+                // Upload the generated XTC file using the repository API
+                repository.uploadFile(baseUrl, file, "/books/${file.name}")
+
+                _previewFile.value = null
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _errorMessage.value = "Upload failed: ${e.message}"
+            } finally {
+                _converting.value = false
+            }
+        }
+    }
+
+    fun closePreview() {
+        _previewFile.value = null
     }
 }
