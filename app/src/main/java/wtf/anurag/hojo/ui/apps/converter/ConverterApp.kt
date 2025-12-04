@@ -13,36 +13,27 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.annotation.RequiresApi
+import android.os.Build
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import java.util.Locale
 import wtf.anurag.hojo.ui.theme.HojoTheme
 import wtf.anurag.hojo.ui.viewmodels.ConnectivityViewModel
 
+@RequiresApi(Build.VERSION_CODES.Q)
+@Suppress("DEPRECATION")
 @Composable
 fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewModel = viewModel()) {
-        val context = LocalContext.current
-        val viewModel: ConverterViewModel =
-                viewModel(
-                        factory =
-                                object : androidx.lifecycle.ViewModelProvider.Factory {
-                                        override fun <T : androidx.lifecycle.ViewModel> create(
-                                                modelClass: Class<T>
-                                        ): T {
-                                                return ConverterViewModel(
-                                                        context.applicationContext as
-                                                                android.app.Application
-                                                ) as
-                                                        T
-                                        }
-                                }
-                )
+         val viewModel: ConverterViewModel = hiltViewModel()
 
         val status by viewModel.status.collectAsState()
         val settings by viewModel.settings.collectAsState()
         val selectedFile by viewModel.selectedFile.collectAsState()
+        val deviceBaseUrl by connectivityViewModel.deviceBaseUrl.collectAsState()
 
         val filePickerLauncher =
                 rememberLauncherForActivityResult(
@@ -69,7 +60,7 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                 ) {
                         IconButton(onClick = onBack) {
                                 Icon(
-                                        Icons.Default.ArrowBack,
+                                        Icons.Filled.ArrowBack,
                                         contentDescription = "Back",
                                         tint = HojoTheme.colors.text
                                 )
@@ -211,7 +202,7 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                                                         onClick = {
                                                                 viewModel.uploadToEpaper(
                                                                         successStatus.outputFile,
-                                                                        connectivityViewModel
+                                                                        deviceBaseUrl
                                                                 )
                                                         },
                                                         colors =
@@ -343,7 +334,7 @@ fun SettingsSection(
 
                 // Line Height
                 Text(
-                        "Line Height: ${String.format("%.1f", settings.lineHeight)}",
+                        "Line Height: ${String.format(Locale.getDefault(), "%.1f", settings.lineHeight)}",
                         color = HojoTheme.colors.subText
                 )
                 Slider(

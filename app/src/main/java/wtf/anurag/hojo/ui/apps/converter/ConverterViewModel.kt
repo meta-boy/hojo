@@ -3,11 +3,13 @@ package wtf.anurag.hojo.ui.apps.converter
 import android.app.Application
 import android.content.ContentValues
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -18,9 +20,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import wtf.anurag.hojo.data.FileManagerRepository
-import wtf.anurag.hojo.ui.viewmodels.ConnectivityViewModel
+import javax.inject.Inject
 
-class ConverterViewModel(application: Application) : AndroidViewModel(application) {
+@HiltViewModel
+class ConverterViewModel @Inject constructor(
+    application: Application,
+    private val repository: FileManagerRepository
+) : AndroidViewModel(application) {
 
     private val _status = MutableStateFlow<ConverterStatus>(ConverterStatus.Idle)
     val status: StateFlow<ConverterStatus> = _status.asStateFlow()
@@ -94,7 +100,7 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
         var result: String? = null
         if (uri.scheme == "content") {
             val cursor =
-                    getApplication<Application>().contentResolver.query(uri, null, null, null, null)
+                getApplication<Application>().contentResolver.query(uri, null, null, null, null)
             try {
                 if (cursor != null && cursor.moveToFirst()) {
                     val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
@@ -110,9 +116,11 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
         }
         if (result == null) {
             result = uri.path
-            val cut = result?.lastIndexOf('/')
-            if (cut != null && cut != -1) {
-                result = result?.substring(cut + 1)
+            if (result != null) {
+                val cut = result.lastIndexOf('/')
+                if (cut != -1) {
+                    result = result.substring(cut + 1)
+                }
             }
         }
         return result ?: "book.epub"
@@ -134,21 +142,21 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
 
                 val converter = NativeConverter()
                 val result =
-                        withContext(Dispatchers.Default) {
-                            converter.convert(inputStream, _settings.value) { current, total ->
-                                _status.value = ConverterStatus.Converting(current, total)
-                            }
+                    withContext(Dispatchers.Default) {
+                        converter.convert(inputStream, _settings.value) { current, total ->
+                            _status.value = ConverterStatus.Converting(current, total)
                         }
+                    }
 
                 // Save result
                 val originalName = getFileName(uri).substringBeforeLast(".")
                 val fileName = (originalName + ".xtc").replace(" ", "_")
                 val outputFile =
-                        withContext(Dispatchers.IO) {
-                            val file = File(getApplication<Application>().cacheDir, fileName)
-                            FileOutputStream(file).use { it.write(result) }
-                            file
-                        }
+                    withContext(Dispatchers.IO) {
+                        val file = File(getApplication<Application>().cacheDir, fileName)
+                        FileOutputStream(file).use { it.write(result) }
+                        file
+                    }
 
                 _status.value = ConverterStatus.Success(outputFile)
             } catch (e: Exception) {
@@ -163,21 +171,19 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
         _selectedFile.value = null
     }
 
-    fun uploadToEpaper(file: File, connectivityViewModel: ConnectivityViewModel) {
+    // Accept baseUrl string so this method doesn't directly depend on ConnectivityViewModel's API level
+    fun uploadToEpaper(file: File, baseUrl: String) {
         viewModelScope.launch {
             try {
                 _status.value = ConverterStatus.Uploading
 
-                val baseUrl = connectivityViewModel.deviceBaseUrl.value
                 val fileName = file.name
                 val targetPath = "/books/$fileName"
-
-                val repository = FileManagerRepository()
 
                 // Ensure /books directory exists
                 try {
                     repository.createFolder(baseUrl, "/books")
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     // Ignore if already exists or fails, try upload anyway
                 }
 
@@ -191,7 +197,7 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun saveToDownloads(file: File) {
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             _status.value = ConverterStatus.Error("Save to Downloads requires Android 10+")
             return
         }
@@ -199,14 +205,14 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val contentValues =
-                        ContentValues().apply {
-                            put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
-                            put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
-                            put(
-                                    MediaStore.MediaColumns.RELATIVE_PATH,
-                                    Environment.DIRECTORY_DOWNLOADS
-                            )
-                        }
+                    ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+                        put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                        put(
+                            MediaStore.MediaColumns.RELATIVE_PATH,
+                            Environment.DIRECTORY_DOWNLOADS
+                        )
+                    }
                 val resolver = getApplication<Application>().contentResolver
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
 
@@ -216,11 +222,10 @@ class ConverterViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                     withContext(Dispatchers.Main) {
                         android.widget.Toast.makeText(
-                                        getApplication(),
-                                        "Saved to Downloads",
-                                        android.widget.Toast.LENGTH_SHORT
-                                )
-                                .show()
+                            getApplication(),
+                            "Saved to Downloads",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
                         val currentStatus = _status.value
                         if (currentStatus is ConverterStatus.Success) {
                             _status.value = currentStatus.copy(isSaved = true)

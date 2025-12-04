@@ -149,8 +149,7 @@ fun MainScreen() {
                 ) {
                         val connectivityViewModel: ConnectivityViewModel = hiltViewModel()
                         FileManagerApp(
-                                onBack = { navController.popBackStack() },
-                                connectivityViewModel = connectivityViewModel
+                                onBack = { navController.popBackStack() }
                         )
                 }
 
@@ -182,10 +181,8 @@ fun MainScreen() {
                         }
                 ) {
                         val connectivityViewModel: ConnectivityViewModel = hiltViewModel()
-                        val deviceBaseUrl by connectivityViewModel.deviceBaseUrl.collectAsState()
                         WallpaperEditor(
-                                onBack = { navController.popBackStack() },
-                                baseUrl = deviceBaseUrl
+                                onBack = { navController.popBackStack() }
                         )
                 }
 

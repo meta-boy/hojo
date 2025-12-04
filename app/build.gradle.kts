@@ -110,4 +110,9 @@ android {
     configurations.all {
         exclude(group = "xmlpull", module = "xmlpull")
     }
+
+    // Force a compatible JavaPoet version to avoid runtime conflicts in annotation processors (Hilt)
+    configurations.all {
+        resolutionStrategy.force("com.squareup:javapoet:1.13.0")
+    }
 }

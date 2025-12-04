@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import wtf.anurag.hojo.data.FileManagerRepository
+import wtf.anurag.hojo.connectivity.EpaperConnectivityManager
 import javax.inject.Inject
 
 data class FilterState(
@@ -35,7 +36,8 @@ val INK_SCREEN_PRESET =
 @HiltViewModel
 class WallpaperViewModel @Inject constructor(
     application: Application,
-    private val repository: FileManagerRepository
+    private val repository: FileManagerRepository,
+    private val connectivityManager: EpaperConnectivityManager
 ) : AndroidViewModel(application) {
 
     private val _template = MutableStateFlow<String?>(null)
@@ -89,7 +91,8 @@ class WallpaperViewModel @Inject constructor(
         }
     }
 
-    fun saveAndUpload(baseUrl: String, onSuccess: () -> Unit) {
+    fun saveAndUpload(onSuccess: () -> Unit) {
+        val baseUrl = connectivityManager.getDeviceBaseUrl()
         val bmp = _bitmap.value ?: return
         val currentFilters = _filters.value
 
