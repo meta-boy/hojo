@@ -8,7 +8,8 @@ data class ConverterSettings(
         val margin: Int = 10,
         val enableDithering: Boolean = true,
         val ditherStrength: Int = 70,
-        val fontFamily: String = ""
+        val fontFamily: String = "",
+        val colorMode: XtcEncoder.ColorMode = XtcEncoder.ColorMode.GRAYSCALE_4
 )
 
 sealed class ConverterStatus {

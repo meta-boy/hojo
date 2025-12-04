@@ -19,7 +19,9 @@ import okhttp3.OkHttpClient
 import org.jsoup.Jsoup
 import wtf.anurag.hojo.data.ConnectivityRepository
 import wtf.anurag.hojo.data.FileManagerRepository
+import wtf.anurag.hojo.ui.apps.converter.ConverterSettings
 import wtf.anurag.hojo.ui.apps.converter.HtmlConverter
+import wtf.anurag.hojo.ui.apps.converter.XtcEncoder
 import javax.inject.Inject
 
 @HiltViewModel
@@ -80,7 +82,8 @@ class QuickLinkViewModel @Inject constructor(
                     converter.convertHtml(
                         html = html,
                         title = title,
-                        baseUrl = _quickLinkUrl.value
+                        baseUrl = _quickLinkUrl.value,
+                        settings = ConverterSettings(colorMode = XtcEncoder.ColorMode.MONOCHROME)
                     )
                 }
 

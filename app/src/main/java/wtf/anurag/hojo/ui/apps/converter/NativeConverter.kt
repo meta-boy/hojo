@@ -65,10 +65,10 @@ class NativeConverter {
             val spanned = XtcEncoder.htmlToSpanned(bodyHtml, imageGetter, textPaint, settings)
 
             // Render pages for this chapter
-            val pages = XtcEncoder.renderPages(spanned, textPaint, settings) { current, _ ->
+            val pages = XtcEncoder.renderPages(spanned, textPaint, settings, { current, _ ->
                 pageCount++
                 onProgress(pageCount, -1)
-            }
+            }, settings.colorMode)
 
             allPages.addAll(pages)
         }

@@ -360,5 +360,54 @@ fun SettingsSection(
                         )
                         Text("Enable Dithering", color = HojoTheme.colors.text)
                 }
+
+                // Color Mode
+                var colorModeExpanded by remember { mutableStateOf(false) }
+                Text(
+                        "Color Mode",
+                        color = HojoTheme.colors.subText,
+                        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
+                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                                onClick = { colorModeExpanded = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors =
+                                        ButtonDefaults.outlinedButtonColors(
+                                                contentColor = HojoTheme.colors.text
+                                        )
+                        ) {
+                                Text(
+                                        text = when (settings.colorMode) {
+                                                XtcEncoder.ColorMode.MONOCHROME -> "Monochrome (1-bit)"
+                                                XtcEncoder.ColorMode.GRAYSCALE_4 -> "Grayscale (4-level)"
+                                        }
+                                )
+                        }
+                        DropdownMenu(
+                                expanded = colorModeExpanded,
+                                onDismissRequest = { colorModeExpanded = false },
+                                modifier = Modifier.background(HojoTheme.colors.windowBg)
+                        ) {
+                                DropdownMenuItem(
+                                        text = {
+                                                Text("Grayscale (4-level)", color = HojoTheme.colors.text)
+                                        },
+                                        onClick = {
+                                                onUpdate(settings.copy(colorMode = XtcEncoder.ColorMode.GRAYSCALE_4))
+                                                colorModeExpanded = false
+                                        }
+                                )
+                                DropdownMenuItem(
+                                        text = {
+                                                Text("Monochrome (1-bit)", color = HojoTheme.colors.text)
+                                        },
+                                        onClick = {
+                                                onUpdate(settings.copy(colorMode = XtcEncoder.ColorMode.MONOCHROME))
+                                                colorModeExpanded = false
+                                        }
+                                )
+                        }
+                }
         }
 }
