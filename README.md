@@ -1,6 +1,8 @@
 # Hojo
 
-An Android companion app for managing XTEINK X4 e-paper displays via WiFi hotspot connectivity.
+An unofficial Android companion app for managing XTEINK X4 e-paper displays via WiFi hotspot connectivity.
+
+> ⚠️ **Disclaimer**: This is an **unofficial**, community-developed application. Hojo is **not affiliated with, endorsed by, or sponsored by XTEINK** in any way. Use at your own risk.
 
 ## Overview
 
@@ -28,8 +30,13 @@ Hojo is a native Android application built with Jetpack Compose that provides a 
 - Image cropping and editing tools
 - Direct upload to e-paper device
 
+### 📚 EPUB Converter
+- Convert documents to EPUB format optimized for e-paper displays
+- Customizable font and layout settings
+- Native conversion engine
+
 ### 🔗 Quick Link
-- Convert web articles to EPUB format using dotEPUB
+- Convert web articles to EPUB format
 - Uploads to /books directory on device for quick content display
 
 ## Technical Stack
@@ -45,9 +52,11 @@ Hojo is a native Android application built with Jetpack Compose that provides a 
 - Jetpack Compose BOM
 - Material 3 with Extended Icons
 - Navigation Compose
+- Hilt for dependency injection
 - OkHttp for networking
 - Gson for JSON parsing
 - Jsoup for HTML parsing
+- epublib for EPUB generation
 - Android Image Cropper for image editing
 
 ## Project Structure
@@ -58,12 +67,25 @@ app/src/main/java/wtf/anurag/hojo/
 │   ├── EpaperConnectivityManager.kt
 │   └── SmartNetworkInterceptor.kt
 ├── data/                  # Data models and repositories
+│   ├── model/            # Data classes (FileItem, StorageStatus, etc.)
+│   ├── ConnectivityRepository.kt
+│   ├── DefaultConnectivityRepository.kt
+│   ├── FileManagerRepository.kt
+│   └── ProgressRequestBody.kt
+├── di/                    # Dependency injection (Hilt)
+│   └── AppModule.kt
 ├── ui/                    # UI components and screens
-│   ├── apps/             # Feature-specific apps (wallpaper editor)
+│   ├── apps/             # Feature apps
+│   │   ├── converter/    # EPUB converter
+│   │   ├── filemanager/  # File browser
+│   │   ├── quicklink/    # Quick link modal
+│   │   └── wallpaper/    # Wallpaper editor
 │   ├── components/       # Reusable UI components
 │   ├── viewmodels/       # ViewModels for state management
-│   └── theme/            # App theming
+│   ├── theme/            # App theming
+│   └── MainScreen.kt     # Main navigation screen
 ├── utils/                # Utility functions
+├── HojoApplication.kt    # Application class
 └── MainActivity.kt       # App entry point
 ```
 
@@ -104,6 +126,8 @@ cd hojo
 The release APK will be generated at `app/build/outputs/apk/release/`
 
 ## XTEINK X4 Device Configuration
+
+> **Note**: These connection settings were reverse-engineered from the device and may change with firmware updates.
 
 The app is configured to connect to the XTEINK X4 e-paper display with the following default settings:
 
@@ -146,7 +170,13 @@ The app requires the following permissions:
    - Crop and adjust as needed
    - Save to upload directly to the e-paper device
 
-4. **Quick Link**
+4. **Convert to EPUB**
+   - Tap "EPUB Converter" from the home screen
+   - Select a document from your device
+   - Customize font and layout settings
+   - Convert and upload to your e-paper device
+
+5. **Quick Link**
    - Tap "Quick Link" from the home screen
    - Enter a URL
    - The app converts and uploads the content to your e-paper display
@@ -161,17 +191,28 @@ The app requires the following permissions:
 ### Architecture
 - UI components use Jetpack Compose
 - State management via ViewModels and StateFlow
+- Dependency injection using Hilt
 - Network operations on IO dispatcher
 - UI updates on Main dispatcher
 
-## License
-
-[Add your license information here]
-
 ## Contributing
 
-[Add contribution guidelines here]
+Contributions are welcome! This is a community project, and we appreciate any help improving it.
 
-## Support
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-For issues, questions, or contributions, please [add contact/issue tracker information].
+## Legal Notice
+
+- **XTEINK** is a trademark of its respective owner.
+- This project is an independent, community-driven effort and is **not** officially supported by XTEINK.
+- The developers of this app are not responsible for any damage to your e-paper device.
+- Use this software at your own risk.
+
+---
+
+*Made with ❤️ by the community, for the community.*
+
