@@ -35,6 +35,29 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
         val selectedFile by viewModel.selectedFile.collectAsState()
         val deviceBaseUrl by connectivityViewModel.deviceBaseUrl.collectAsState()
 
+        // Show preview screen when Preview status is active
+        if (status is ConverterStatus.Preview) {
+                val previewStatus = status as ConverterStatus.Preview
+                XtcPreviewScreen(
+                        file = previewStatus.outputFile,
+                        onBack = {
+                                viewModel.reset()
+                                onBack()
+                        },
+                        onUpload = {
+                                viewModel.uploadToEpaper(
+                                        previewStatus.outputFile,
+                                        deviceBaseUrl
+                                )
+                        },
+                        onSaveToDownloads = {
+                                viewModel.saveToDownloads(previewStatus.outputFile)
+                        },
+                        isSaved = previewStatus.isSaved
+                )
+                return
+        }
+
         val filePickerLauncher =
                 rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.OpenDocument(),
@@ -183,59 +206,6 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                                                 Text("Error: ${s.message}", color = Color.Red)
                                         else -> {}
                                 }
-                        }
-
-                        // Success Dialog
-                        if (status is ConverterStatus.Success) {
-                                val successStatus = status as ConverterStatus.Success
-                                AlertDialog(
-                                        onDismissRequest = { /* Prevent dismissal without action */
-                                        },
-                                        title = { Text("Conversion Complete") },
-                                        text = {
-                                                Text(
-                                                        "File converted successfully. What would you like to do?"
-                                                )
-                                        },
-                                        confirmButton = {
-                                                Button(
-                                                        onClick = {
-                                                                viewModel.uploadToEpaper(
-                                                                        successStatus.outputFile,
-                                                                        deviceBaseUrl
-                                                                )
-                                                        },
-                                                        colors =
-                                                                ButtonDefaults.buttonColors(
-                                                                        containerColor =
-                                                                                HojoTheme.colors
-                                                                                        .primary
-                                                                )
-                                                ) { Text("Upload") }
-                                        },
-                                        dismissButton = {
-                                                Row {
-                                                        TextButton(
-                                                                onClick = {
-                                                                        viewModel.saveToDownloads(
-                                                                                successStatus
-                                                                                        .outputFile
-                                                                        )
-                                                                },
-                                                                enabled = !successStatus.isSaved
-                                                        ) {
-                                                                Text(
-                                                                        if (successStatus.isSaved)
-                                                                                "Saved"
-                                                                        else "Save to Downloads"
-                                                                )
-                                                        }
-                                                        TextButton(onClick = { onBack() }) {
-                                                                Text("Exit")
-                                                        }
-                                                }
-                                        }
-                                )
                         }
                 }
         }

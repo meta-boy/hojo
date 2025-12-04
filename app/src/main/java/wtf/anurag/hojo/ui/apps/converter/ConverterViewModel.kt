@@ -158,7 +158,7 @@ class ConverterViewModel @Inject constructor(
                         file
                     }
 
-                _status.value = ConverterStatus.Success(outputFile)
+                _status.value = ConverterStatus.Preview(outputFile)
             } catch (e: Exception) {
                 e.printStackTrace()
                 _status.value = ConverterStatus.Error("Conversion failed: ${e.message}")
@@ -227,7 +227,7 @@ class ConverterViewModel @Inject constructor(
                             android.widget.Toast.LENGTH_SHORT
                         ).show()
                         val currentStatus = _status.value
-                        if (currentStatus is ConverterStatus.Success) {
+                        if (currentStatus is ConverterStatus.Preview) {
                             _status.value = currentStatus.copy(isSaved = true)
                         }
                     }
