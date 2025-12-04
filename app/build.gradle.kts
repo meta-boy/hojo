@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.kotlin.android)
     // Apply the Kotlin Compose compiler plugin (from [plugins] section)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.hilt.android)
+    id("kotlin-kapt")
 }
 
 android {
@@ -66,6 +68,11 @@ dependencies {
     // Navigation
     implementation(libs.androidx.navigation.compose)
 
+    // --- Hilt ---
+    implementation(libs.hilt.android)
+    kapt(libs.hilt.compiler)
+    implementation(libs.androidx.hilt.navigation.compose)
+
     // --- Third-party Libraries ---
     implementation(libs.okhttp)
     implementation(libs.gson)
@@ -102,5 +109,10 @@ android {
     }
     configurations.all {
         exclude(group = "xmlpull", module = "xmlpull")
+    }
+
+    // Force a compatible JavaPoet version to avoid runtime conflicts in annotation processors (Hilt)
+    configurations.all {
+        resolutionStrategy.force("com.squareup:javapoet:1.13.0")
     }
 }

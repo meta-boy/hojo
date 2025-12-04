@@ -10,6 +10,7 @@ import android.net.Uri
 import androidx.compose.ui.graphics.ColorMatrix as ComposeColorMatrix
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import wtf.anurag.hojo.data.FileManagerRepository
+import wtf.anurag.hojo.connectivity.EpaperConnectivityManager
+import javax.inject.Inject
 
 data class FilterState(
         val grayscale: Float = 0f,
@@ -30,8 +33,12 @@ val DEFAULT_FILTERS = FilterState()
 val INK_SCREEN_PRESET =
         FilterState(grayscale = 0f, contrast = 130f, brightness = 100f, saturation = 50f)
 
-class WallpaperViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository = FileManagerRepository()
+@HiltViewModel
+class WallpaperViewModel @Inject constructor(
+    application: Application,
+    private val repository: FileManagerRepository,
+    private val connectivityManager: EpaperConnectivityManager
+) : AndroidViewModel(application) {
 
     private val _template = MutableStateFlow<String?>(null)
     val template = _template.asStateFlow()
@@ -84,7 +91,8 @@ class WallpaperViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun saveAndUpload(baseUrl: String, onSuccess: () -> Unit) {
+    fun saveAndUpload(onSuccess: () -> Unit) {
+        val baseUrl = connectivityManager.getDeviceBaseUrl()
         val bmp = _bitmap.value ?: return
         val currentFilters = _filters.value
 

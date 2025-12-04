@@ -4,3 +4,10 @@ plugins {
     alias(libs.plugins.kotlin.android) apply false
     alias(libs.plugins.kotlin.compose) apply false
 }
+
+buildscript {
+    dependencies {
+        // Ensure the Gradle classpath has a JavaPoet version compatible with Hilt's plugin
+        classpath("com.squareup:javapoet:1.13.0")
+    }
+}

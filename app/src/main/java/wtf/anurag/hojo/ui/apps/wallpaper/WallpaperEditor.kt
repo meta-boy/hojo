@@ -56,7 +56,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.canhub.cropper.CropImageView
 import java.io.File
 import java.io.FileOutputStream
@@ -68,8 +68,7 @@ import wtf.anurag.hojo.ui.viewmodels.WallpaperViewModel
 @Composable
 fun WallpaperEditor(
         onBack: () -> Unit,
-        baseUrl: String = "http://192.168.3.3",
-        viewModel: WallpaperViewModel = viewModel()
+        viewModel: WallpaperViewModel = hiltViewModel()
 ) {
         val colors = HojoTheme.colors
         val context = LocalContext.current
@@ -490,7 +489,7 @@ fun WallpaperEditor(
                                         fontSize = 16.sp,
                                         modifier =
                                                 Modifier.clickable {
-                                                        viewModel.saveAndUpload(baseUrl) {
+                                                        viewModel.saveAndUpload {
                                                                 // Success - navigate back
                                                                 onBack()
                                                         }
