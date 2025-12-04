@@ -33,3 +33,19 @@
 # For epublib
 -keep class nl.siegmann.epublib.** { *; }
 -dontwarn nl.siegmann.epublib.**
+
+# Gson serialization rules
+-keepattributes Signature
+-keepattributes *Annotation*
+
+# Keep Gson TypeToken (required for generic types)
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+
+# Keep data model classes for Gson deserialization
+-keep class wtf.anurag.hojo.data.model.** { *; }
+
+# Keep fields annotated with @SerializedName
+-keepclassmembers,allowobfuscation class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
