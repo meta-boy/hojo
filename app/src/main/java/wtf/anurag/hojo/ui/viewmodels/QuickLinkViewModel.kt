@@ -19,6 +19,7 @@ import okhttp3.OkHttpClient
 import org.jsoup.Jsoup
 import wtf.anurag.hojo.data.ConnectivityRepository
 import wtf.anurag.hojo.data.FileManagerRepository
+import wtf.anurag.hojo.ui.apps.converter.HtmlConverter
 import javax.inject.Inject
 
 @HiltViewModel
@@ -69,42 +70,24 @@ class QuickLinkViewModel @Inject constructor(
                 // 2. Fetch HTML and Parse
                 val html = withContext(Dispatchers.IO) { URL(_quickLinkUrl.value).readText() }
 
-                // Simple extraction using Jsoup (Readability alternative)
+                // Parse using Jsoup to get title
                 val doc = Jsoup.parse(html)
-                val title = doc.title()
-                val content = doc.body().html() // Send full body for now, dotEPUB handles it
+                val title = doc.title().ifEmpty { "Quick Link" }
 
-                // 3. Send to dotEPUB
-                // Multipart request
-                val requestBody =
-                        okhttp3.MultipartBody.Builder()
-                                .setType(okhttp3.MultipartBody.FORM)
-                                .addFormDataPart("html", content)
-                                .addFormDataPart("title", title)
-                                .addFormDataPart("url", _quickLinkUrl.value)
-                                .addFormDataPart("lang", "en")
-                                .addFormDataPart("format", "epub")
-                                .addFormDataPart("links", "0")
-                                .addFormDataPart("imgs", "1")
-                                .addFormDataPart("flags", "|")
-                                .build()
-
-                val request =
-                        okhttp3.Request.Builder()
-                                .url("https://dotepub.com/api/v1/post")
-                                .post(requestBody)
-                                .build()
-
-                val response = withContext(Dispatchers.IO) { okHttpClient.newCall(request).execute() }
-
-                if (!response.isSuccessful) throw Exception("Conversion failed: ${response.code}")
-
-                val bytes = response.body?.bytes() ?: throw Exception("No body")
+                // 3. Convert HTML directly to XTC format
+                val converter = HtmlConverter(okHttpClient)
+                val result = withContext(Dispatchers.Default) {
+                    converter.convertHtml(
+                        html = html,
+                        title = title,
+                        baseUrl = _quickLinkUrl.value
+                    )
+                }
 
                 // Save to temp file
-                val fileName = "${title.take(20).replace(Regex("[^a-zA-Z0-9]"), "_")}.epub"
+                val fileName = "${title.take(20).replace(Regex("[^a-zA-Z0-9]"), "_")}.xtc"
                 val tempFile = File(getApplication<Application>().cacheDir, fileName)
-                withContext(Dispatchers.IO) { FileOutputStream(tempFile).use { it.write(bytes) } }
+                withContext(Dispatchers.IO) { FileOutputStream(tempFile).use { it.write(result.data) } }
 
                 // 4. Rebind to Epaper
                 connectivityRepository.bindToEpaperNetwork()
@@ -116,8 +99,7 @@ class QuickLinkViewModel @Inject constructor(
                     repository.createFolder(baseUrl, "/books")
                 }
 
-                // Upload the generated EPUB file using the repository API (baseUrl, File,
-                // targetPath)
+                // Upload the generated XTC file using the repository API
                 repository.uploadFile(baseUrl, tempFile, "/books/$fileName")
 
                 _quickLinkVisible.value = false
@@ -128,10 +110,8 @@ class QuickLinkViewModel @Inject constructor(
                         when {
                             e.message?.contains("failed to connect", ignoreCase = true) == true ->
                                     "Failed to connect. Please check your internet connection."
-                            e.message?.contains("Conversion failed", ignoreCase = true) == true ->
-                                    "Failed to convert URL. The page may not be accessible."
-                            e.message?.contains("No body", ignoreCase = true) == true ->
-                                    "Conversion service returned empty response."
+                            e.message?.contains("No pages rendered", ignoreCase = true) == true ->
+                                    "Failed to convert page. The content may be empty or unsupported."
                             else -> "Error: ${e.message ?: "Unknown error occurred"}"
                         }
             } finally {
