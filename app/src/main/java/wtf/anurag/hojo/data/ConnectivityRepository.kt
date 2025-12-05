@@ -15,7 +15,8 @@ interface ConnectivityRepository {
     suspend fun updateDeviceStatus()
     suspend fun disconnect()
 
-    // For QuickLinkViewModel
+    // For QuickLinkViewModel - network switching
     suspend fun unbindNetwork()
     suspend fun bindToEpaperNetwork(): Boolean
+    suspend fun prepareNetworkForApiRequest(): Boolean  // Ensures internet access
 }

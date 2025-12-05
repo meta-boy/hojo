@@ -30,8 +30,13 @@ class DefaultConnectivityRepository @Inject constructor(
     private val _deviceBaseUrl = MutableStateFlow("http://192.168.3.3")
     override val deviceBaseUrl: StateFlow<String> = _deviceBaseUrl.asStateFlow()
 
-    private val _isDiscovering = MutableStateFlow(false)
-    override val isDiscovering: StateFlow<Boolean> = _isDiscovering.asStateFlow()
+    // Delegate to connectivity manager's discovery state
+    override val isDiscovering: StateFlow<Boolean>
+        get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            connectivityManager.isDiscovering
+        } else {
+            MutableStateFlow(false)
+        }
 
     override suspend fun checkConnection() {
         // Check if we can hit the API with current base URL
@@ -50,18 +55,20 @@ class DefaultConnectivityRepository @Inject constructor(
         withContext(Dispatchers.IO) {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    // First, try to connect to E-Paper hotspot
-                    val success = connectivityManager.connectToEpaperHotspot()
-                    if (success) {
-                        connectivityManager.bindToEpaperNetwork()
+                    // First try to connect to already-discovered device (fast path)
+                    var success = connectivityManager.connectToDiscoveredDevice()
 
-                        // Try to discover device on the network
-                        _isDiscovering.value = true
-                        val discoveredIp = connectivityManager.discoverDeviceOnNetwork()
-                        if (discoveredIp != null) {
-                            Log.d("ConnectivityRepository", "Discovered device at $discoveredIp")
+                    if (!success) {
+                        // If no discovered device, use the full connection flow
+                        success = connectivityManager.connectToDevice()
+                    }
+
+                    if (success) {
+                        // If we're connected via e-paper's hotspot, bind to it
+                        if (connectivityManager.connectionMode.value ==
+                            wtf.anurag.hojo.connectivity.EpaperConnectivityManager.ConnectionMode.HOTSPOT) {
+                            connectivityManager.bindToEpaperNetwork()
                         }
-                        _isDiscovering.value = false
 
                         // Update base URL with discovered IP or use default
                         _deviceBaseUrl.value = connectivityManager.getDeviceBaseUrl()
@@ -76,7 +83,6 @@ class DefaultConnectivityRepository @Inject constructor(
                     // Log error
                     e.printStackTrace()
                 }
-                _isDiscovering.value = false
             } finally {
                 _isConnecting.value = false
             }
@@ -117,6 +123,14 @@ class DefaultConnectivityRepository @Inject constructor(
             connectivityManager.bindToEpaperNetwork()
         } else {
             false
+        }
+    }
+
+    override suspend fun prepareNetworkForApiRequest(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            connectivityManager.prepareNetworkForApiRequest()
+        } else {
+            true // Assume internet is available on older devices
         }
     }
 }

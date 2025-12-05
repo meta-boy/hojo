@@ -177,8 +177,13 @@ class QuickLinkViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                // 1. Unbind to access internet
-                connectivityRepository.unbindNetwork()
+                // 1. Prepare network for internet access (finds cellular/WiFi with internet)
+                val hasInternet = connectivityRepository.prepareNetworkForApiRequest()
+                if (!hasInternet) {
+                    _errorMessage.value = "No internet connection available. If you're using hotspot mode, please ensure mobile data is enabled."
+                    _converting.value = false
+                    return@launch
+                }
 
                 // 2. Fetch Raw HTML
                 val rawHtml = withContext(Dispatchers.IO) { URL(_quickLinkUrl.value).readText() }
@@ -209,7 +214,7 @@ class QuickLinkViewModel @Inject constructor(
                 val tempFile = File(getApplication<Application>().cacheDir, fileName)
                 withContext(Dispatchers.IO) { FileOutputStream(tempFile).use { it.write(result.data) } }
 
-                // 5. Rebind to Epaper
+                // 5. Rebind to Epaper network for device communication
                 connectivityRepository.bindToEpaperNetwork()
 
                 // Show preview
@@ -224,6 +229,8 @@ class QuickLinkViewModel @Inject constructor(
                                     "Failed to connect. Please check your internet connection."
                             e.message?.contains("No pages rendered", ignoreCase = true) == true ->
                                     "Failed to convert page. The content may be empty or unsupported."
+                            e.message?.contains("Unable to resolve host", ignoreCase = true) == true ->
+                                    "No internet connection. If using hotspot, enable mobile data."
                             else -> "Error: ${e.message ?: "Unknown error occurred"}"
                         }
                 // Ensure rebind on error

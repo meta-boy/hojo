@@ -57,15 +57,20 @@ class FileManagerRepository @Inject constructor(private val client: OkHttpClient
 
     suspend fun createFolder(baseUrl: String, path: String) =
             withContext(Dispatchers.IO) {
+                // Ensure path ends with / to indicate it's a directory
+                val folderPath = if (path.endsWith("/")) path else "$path/"
+
                 val body =
                         MultipartBody.Builder()
                                 .setType(MultipartBody.FORM)
-                                .addFormDataPart("path", path)
+                                .addFormDataPart("path", folderPath)
                                 .build()
 
                 val request = Request.Builder().url("$baseUrl/edit").put(body).build()
 
+                Log.d(TAG, "createFolder -> PUT $baseUrl/edit with path=$folderPath")
                 client.newCall(request).execute().use { response ->
+                    Log.d(TAG, "createFolder -> response code: ${response.code}")
                     if (!response.isSuccessful) throw IOException("Create failed: ${response.code}")
                 }
             }
@@ -108,6 +113,16 @@ class FileManagerRepository @Inject constructor(private val client: OkHttpClient
             onProgress: ((bytesWritten: Long, totalBytes: Long) -> Unit)? = null
     ) =
             withContext(Dispatchers.IO) {
+                // Create the parent folder if it doesn't exist
+                val parentPath = targetPath.substringBeforeLast('/', "")
+                if (parentPath.isNotEmpty()) {
+                    try {
+                        createFolder(baseUrl, parentPath)
+                    } catch (e: Exception) {
+                        Log.d(TAG, "Parent folder might already exist or creation failed: ${e.message}")
+                    }
+                }
+
                 val extension = file.extension
                 val mimeType =
                         MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension)

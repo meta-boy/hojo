@@ -7,6 +7,8 @@ import android.graphics.Canvas
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.net.Uri
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.ui.graphics.ColorMatrix as ComposeColorMatrix
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -91,6 +93,7 @@ class WallpaperViewModel @Inject constructor(
         }
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun saveAndUpload(onSuccess: () -> Unit) {
         val baseUrl = connectivityManager.getDeviceBaseUrl()
         val bmp = _bitmap.value ?: return
