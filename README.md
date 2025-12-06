@@ -39,6 +39,11 @@ Hojo is a native Android application built with Jetpack Compose that provides a 
 - Convert web articles to EPUB format
 - Uploads to /books directory on device for quick content display
 
+### ⚙️ Settings
+- Theme customization (System Default, Light, Dark)
+- View app version information
+- Link to GitHub repository
+
 ## Technical Stack
 
 - **Language**: Kotlin
@@ -68,6 +73,7 @@ app/src/main/java/wtf/anurag/hojo/
 │   └── SmartNetworkInterceptor.kt
 ├── data/                  # Data models and repositories
 │   ├── model/            # Data classes (FileItem, StorageStatus, etc.)
+│   ├── repository/       # Repositories (ThemeRepository, etc.)
 │   ├── ConnectivityRepository.kt
 │   ├── DefaultConnectivityRepository.kt
 │   ├── FileManagerRepository.kt
@@ -79,9 +85,15 @@ app/src/main/java/wtf/anurag/hojo/
 │   │   ├── converter/    # EPUB converter
 │   │   ├── filemanager/  # File browser
 │   │   ├── quicklink/    # Quick link modal
+│   │   ├── settings/     # App settings
 │   │   └── wallpaper/    # Wallpaper editor
 │   ├── components/       # Reusable UI components
 │   ├── viewmodels/       # ViewModels for state management
+│   │   ├── ConnectivityViewModel.kt
+│   │   ├── FileManagerViewModel.kt
+│   │   ├── QuickLinkViewModel.kt
+│   │   ├── SettingsViewModel.kt
+│   │   └── WallpaperViewModel.kt
 │   ├── theme/            # App theming
 │   └── MainScreen.kt     # Main navigation screen
 ├── utils/                # Utility functions
@@ -215,4 +227,3 @@ Contributions are welcome! This is a community project, and we appreciate any he
 ---
 
 *Made with ❤️ by the community, for the community.*
-
