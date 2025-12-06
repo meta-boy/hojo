@@ -11,13 +11,26 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Upload
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -27,26 +40,24 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import wtf.anurag.hojo.ui.theme.HojoTheme
 import java.io.File
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 
 @Suppress("DEPRECATION")
 @Composable
 fun XtcPreviewScreen(
-    file: File,
-    onBack: () -> Unit,
-    onUpload: () -> Unit,
-    onSaveToDownloads: () -> Unit,
-    isSaved: Boolean = false
+        file: File,
+        onBack: () -> Unit,
+        onUpload: () -> Unit,
+        onSaveToDownloads: () -> Unit,
+        isSaved: Boolean = false
 ) {
     var fileInfo by remember { mutableStateOf<XtcDecoder.XtcFileInfo?>(null) }
     var pageCount by remember { mutableStateOf(0) }
@@ -67,234 +78,219 @@ fun XtcPreviewScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(HojoTheme.colors.windowBg)
-            .statusBarsPadding()
-    ) {
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(
-                    Icons.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = HojoTheme.colors.text
-                )
-            }
-            Column(modifier = Modifier.weight(1f).padding(start = 8.dp)) {
-                Text(
-                    text = fileInfo?.title ?: "Preview",
-                    color = HojoTheme.colors.text,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                if (fileInfo?.author?.isNotEmpty() == true) {
-                    Text(
-                        text = "by ${fileInfo?.author}",
-                        color = HojoTheme.colors.subText,
-                        fontSize = 14.sp
-                    )
-                }
-            }
-        }
-
-        if (isLoading) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = HojoTheme.colors.primary)
-            }
-        } else if (fileInfo == null) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "Failed to load file",
-                    color = Color.Red,
-                    fontSize = 16.sp
-                )
-            }
-        } else {
-            // File info card
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = HojoTheme.colors.headerBg
-                )
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    InfoRow("Pages", "$pageCount")
-                    InfoRow("File Size", formatFileSize(fileInfo?.totalSize ?: 0))
-                    InfoRow("Format", "XTC (E-Paper)")
-                }
-            }
-
-            // Page thumbnails
-            Text(
-                text = "Pages Preview",
-                color = HojoTheme.colors.text,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-
-            val gridState = rememberLazyGridState()
-
-            // Limit concurrent thumbnail decoding to avoid resource exhaustion
-            val thumbnailSemaphore = remember { Semaphore(2) }
-
-            // Simple in-memory LRU cache for thumbnails (by page index)
-            val thumbnailCache = remember {
-                // use a fraction of the available heap (in KB)
-                val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024).toInt()
-                val cacheSizeKb = maxMemoryKb / 8
-                object : LruCache<Int, Bitmap>(cacheSizeKb) {
-                    override fun sizeOf(key: Int, value: Bitmap): Int {
-                        return try {
-                            // size in KB
-                            value.allocationByteCount / 1024
-                        } catch (_: Throwable) {
-                            1
-                        }
-                    }
-                }
-            }
-            val thumbnailKeys = remember { mutableStateListOf<Int>() }
-
-            // Recycle cached bitmaps when file/screen disposes
-            DisposableEffect(file) {
-                onDispose {
-                    for (k in thumbnailKeys) {
-                        safeCacheRemove(thumbnailCache, k)?.let { bmp ->
-                            try {
-                                bmp.recycle()
-                            } catch (_: Exception) {
-                            }
-                        }
-                     }
-                     thumbnailKeys.clear()
-                 }
-             }
-
-             // Only load thumbnails when they are visible to avoid wasted work during fast scrolls
-             val visibleIndices by remember(gridState) {
-                 derivedStateOf {
-                     gridState.layoutInfo.visibleItemsInfo.map { it.index }.toSet()
-                 }
-             }
-
-             LazyVerticalGrid(
-                 columns = GridCells.Fixed(3),
-                 state = gridState,
-                 modifier = Modifier
-                     .weight(1f)
-                     .fillMaxWidth()
-                     .padding(horizontal = 8.dp),
-                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                 verticalArrangement = Arrangement.spacedBy(12.dp)
-             ) {
-                 itemsIndexed(List(pageCount) { it }) { index, pageIndex ->
-                    PageThumbnail(
-                        file = file,
-                        pageIndex = pageIndex,
-                        onClick = { selectedPageIndex = pageIndex },
-                        semaphore = thumbnailSemaphore,
-                        cache = thumbnailCache,
-                        cacheKeys = thumbnailKeys,
-                        visibleIndices = visibleIndices,
-                        modifier = Modifier
-                            .aspectRatio(3f / 4f)
-                    )
-                 }
-
-                 item {
-                     Spacer(modifier = Modifier.height(80.dp))
-                 }
-             }
-
-            // Prefetch neighbor pages for currently visible items to reduce blank tiles during fast scrolling
-            LaunchedEffect(visibleIndices, file) {
-                // for each visible index, prefetch neighbors (index-1, index+1)
-                for (v in visibleIndices) {
-                    listOf(v - 1, v + 1).forEach { neighbor ->
-                        if (neighbor < 0 || neighbor >= pageCount) return@forEach
-                        // skip if already cached
-                        if (safeCacheGet(thumbnailCache, neighbor) != null) return@forEach
-
-                        // perform a sequential prefetch respecting the semaphore
-                        try {
-                            withContext(Dispatchers.IO) {
-                                thumbnailSemaphore.withPermit {
-                                    try {
-                                        val rawBmp = XtcDecoder.extractPage(file, neighbor)
-                                        if (rawBmp != null) {
-                                            val bmp = scaledThumbnail(rawBmp)
-                                            if (bmp !== rawBmp) {
-                                                try { rawBmp.recycle() } catch (_: Exception) {}
-                                            }
-                                            safeCachePut(thumbnailCache, neighbor, bmp)
-                                            if (!thumbnailKeys.contains(neighbor)) thumbnailKeys.add(neighbor)
-                                        }
-                                    } catch (_: Throwable) {
-                                        // ignore per-page prefetch failures
-                                    }
+    @OptIn(ExperimentalMaterial3Api::class)
+    Scaffold(
+            topBar = {
+                CenterAlignedTopAppBar(
+                        title = {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                        text = fileInfo?.title ?: "Preview",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        maxLines = 1
+                                )
+                                if (fileInfo?.author?.isNotEmpty() == true) {
+                                    Text(
+                                            text = "by ${fileInfo?.author}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1
+                                    )
                                 }
                             }
-                        } catch (_: Exception) {
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        colors =
+                                TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                        containerColor = MaterialTheme.colorScheme.surface,
+                                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                                        navigationIconContentColor =
+                                                MaterialTheme.colorScheme.onSurface
+                                )
+                )
+            },
+            containerColor = MaterialTheme.colorScheme.background
+    ) { paddingValues ->
+        Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            if (isLoading) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
+            } else if (fileInfo == null) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                            text = "Failed to load file",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            } else {
+                // File info card
+                Card(
+                        modifier =
+                                Modifier.fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                        colors =
+                                CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        InfoRow("Pages", "$pageCount")
+                        InfoRow("File Size", formatFileSize(fileInfo?.totalSize ?: 0))
+                        InfoRow("Format", "XTC (E-Paper)")
+                    }
+                }
+
+                // Page thumbnails
+                Text(
+                        text = "Pages Preview",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+
+                val gridState = rememberLazyGridState()
+
+                // Limit concurrent thumbnail decoding to avoid resource exhaustion
+                val thumbnailSemaphore = remember { Semaphore(2) }
+
+                // Simple in-memory LRU cache for thumbnails (by page index)
+                val thumbnailCache = remember {
+                    // use a fraction of the available heap (in KB)
+                    val maxMemoryKb = (Runtime.getRuntime().maxMemory() / 1024).toInt()
+                    val cacheSizeKb = maxMemoryKb / 8
+                    object : LruCache<Int, Bitmap>(cacheSizeKb) {
+                        override fun sizeOf(key: Int, value: Bitmap): Int {
+                            return try {
+                                // size in KB
+                                value.allocationByteCount / 1024
+                            } catch (_: Throwable) {
+                                1
+                            }
                         }
                     }
                 }
-            }
+                val thumbnailKeys = remember { mutableStateListOf<Int>() }
 
-             // Action buttons
-             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(HojoTheme.colors.headerBg)
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onSaveToDownloads,
-                    enabled = !isSaved,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = HojoTheme.colors.text
-                    )
-                ) {
-                    Icon(
-                        Icons.Filled.Download,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (isSaved) "Saved" else "Save")
+                // Recycle cached bitmaps when file/screen disposes
+                DisposableEffect(file) {
+                    onDispose {
+                        for (k in thumbnailKeys) {
+                            safeCacheRemove(thumbnailCache, k)?.let { bmp ->
+                                try {
+                                    bmp.recycle()
+                                } catch (_: Exception) {}
+                            }
+                        }
+                        thumbnailKeys.clear()
+                    }
                 }
 
-                Button(
-                    onClick = onUpload,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = HojoTheme.colors.primary
-                    )
+                // Only load thumbnails when they are visible to avoid wasted work during fast
+                // scrolls
+                val visibleIndices by
+                        remember(gridState) {
+                            derivedStateOf {
+                                gridState.layoutInfo.visibleItemsInfo.map { it.index }.toSet()
+                            }
+                        }
+
+                LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        state = gridState,
+                        modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Icon(
-                        Icons.Filled.Upload,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Upload")
+                    itemsIndexed(List(pageCount) { it }) { _, pageIndex ->
+                        PageThumbnail(
+                                file = file,
+                                pageIndex = pageIndex,
+                                onClick = { selectedPageIndex = pageIndex },
+                                semaphore = thumbnailSemaphore,
+                                cache = thumbnailCache,
+                                cacheKeys = thumbnailKeys,
+                                visibleIndices = visibleIndices,
+                                modifier = Modifier.aspectRatio(3f / 4f)
+                        )
+                    }
+
+                    item { Spacer(modifier = Modifier.height(80.dp)) }
+                }
+
+                // Prefetch neighbor pages for currently visible items to reduce blank tiles during
+                // fast scrolling
+                LaunchedEffect(visibleIndices, file) {
+                    // for each visible index, prefetch neighbors (index-1, index+1)
+                    for (v in visibleIndices) {
+                        listOf(v - 1, v + 1).forEach { neighbor ->
+                            if (neighbor < 0 || neighbor >= pageCount) return@forEach
+                            // skip if already cached
+                            if (safeCacheGet(thumbnailCache, neighbor) != null) return@forEach
+
+                            // perform a sequential prefetch respecting the semaphore
+                            try {
+                                withContext(Dispatchers.IO) {
+                                    thumbnailSemaphore.withPermit {
+                                        try {
+                                            val rawBmp = XtcDecoder.extractPage(file, neighbor)
+                                            if (rawBmp != null) {
+                                                val bmp = scaledThumbnail(rawBmp)
+                                                if (bmp !== rawBmp) {
+                                                    try {
+                                                        rawBmp.recycle()
+                                                    } catch (_: Exception) {}
+                                                }
+                                                safeCachePut(thumbnailCache, neighbor, bmp)
+                                                if (!thumbnailKeys.contains(neighbor))
+                                                        thumbnailKeys.add(neighbor)
+                                            }
+                                        } catch (_: Throwable) {
+                                            // ignore per-page prefetch failures
+                                        }
+                                    }
+                                }
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+
+                // Action buttons
+                Row(
+                        modifier =
+                                Modifier.fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surface)
+                                        .padding(16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                            onClick = onSaveToDownloads,
+                            enabled = !isSaved,
+                            modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                                Icons.Filled.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(if (isSaved) "Saved" else "Save")
+                    }
+
+                    Button(onClick = onUpload, modifier = Modifier.weight(1f)) {
+                        Icon(
+                                Icons.Filled.Upload,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Upload")
+                    }
                 }
             }
         }
@@ -303,11 +299,11 @@ fun XtcPreviewScreen(
     // Full page preview dialog
     if (selectedPageIndex != null) {
         FullPagePreviewDialog(
-            file = file,
-            pageIndex = selectedPageIndex!!,
-            pageCount = pageCount,
-            onDismiss = { selectedPageIndex = null },
-            onNavigate = { newIndex -> selectedPageIndex = newIndex }
+                file = file,
+                pageIndex = selectedPageIndex!!,
+                pageCount = pageCount,
+                onDismiss = { selectedPageIndex = null },
+                onNavigate = { newIndex -> selectedPageIndex = newIndex }
         )
     }
 }
@@ -315,42 +311,41 @@ fun XtcPreviewScreen(
 @Composable
 fun InfoRow(label: String, value: String) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
-            text = label,
-            color = HojoTheme.colors.subText,
-            fontSize = 14.sp
+                text = label,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium
         )
         Text(
-            text = value,
-            color = HojoTheme.colors.text,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Medium
+                text = value,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium
         )
     }
 }
 
 @Composable
 fun PageThumbnail(
-    file: File,
-    pageIndex: Int,
-    onClick: () -> Unit,
-    semaphore: Semaphore,
-    cache: LruCache<Int, Bitmap>,
-    cacheKeys: MutableList<Int>,
-    visibleIndices: Set<Int>,
-    modifier: Modifier = Modifier
+        file: File,
+        pageIndex: Int,
+        onClick: () -> Unit,
+        semaphore: Semaphore,
+        cache: LruCache<Int, Bitmap>,
+        cacheKeys: MutableList<Int>,
+        visibleIndices: Set<Int>,
+        modifier: Modifier = Modifier
 ) {
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
     var loadKey by remember { mutableStateOf(0) } // increment to retry
 
-    // If thumbnail already cached (prefetch or previous load), show it immediately without starting a load
+    // If thumbnail already cached (prefetch or previous load), show it immediately without
+    // starting a load
     LaunchedEffect(cache, pageIndex) {
         safeCacheGet(cache, pageIndex)?.let { cached ->
             bitmap = cached
@@ -365,7 +360,8 @@ fun PageThumbnail(
         }
     }
 
-    // Start loading when the item becomes visible. Wait until visible by checking visibleIndices; this effect re-runs when visibleIndices or loadKey changes.
+    // Start loading when the item becomes visible. Wait until visible by checking
+    // visibleIndices; this effect re-runs when visibleIndices or loadKey changes.
     LaunchedEffect(file, pageIndex, loadKey, visibleIndices) {
         if (!visibleIndices.contains(pageIndex)) {
             // not visible yet — do not start decoding
@@ -391,7 +387,8 @@ fun PageThumbnail(
                         semaphore.withPermit {
                             val rawBmp = XtcDecoder.extractPage(file, pageIndex)
                             if (rawBmp != null) {
-                                // scale to thumbnail size to reduce memory and speed up rendering
+                                // scale to thumbnail size to reduce memory and speed up
+                                // rendering
                                 val bmp = scaledThumbnail(rawBmp)
                                 // if scaling produced a new bitmap, recycle the raw one
                                 if (bmp !== rawBmp) {
@@ -401,7 +398,8 @@ fun PageThumbnail(
                                 }
 
                                 bitmap = bmp
-                                // store in cache only when non-null — defensive try/catch to avoid NPE from underlying cache
+                                // store in cache only when non-null — defensive try/catch to
+                                // avoid NPE from underlying cache
                                 try {
                                     safeCachePut(cache, pageIndex, bmp)
                                     if (!cacheKeys.contains(pageIndex)) cacheKeys.add(pageIndex)
@@ -409,7 +407,8 @@ fun PageThumbnail(
                                     e.printStackTrace()
                                 }
                             } else {
-                                // decoded to null — treat as a failed attempt so retry/backoff applies
+                                // decoded to null — treat as a failed attempt so retry/backoff
+                                // applies
                                 throw Exception("Decoded bitmap was null for page $pageIndex")
                             }
                         }
@@ -427,7 +426,8 @@ fun PageThumbnail(
                             delay(300L * attempts)
                         }
                     } catch (e: CancellationException) {
-                        // If the coroutine is cancelled (e.g., user scrolled away), stop loading without marking a failure
+                        // If the coroutine is cancelled (e.g., user scrolled away), stop
+                        // loading without marking a failure
                         return@withContext
                     } catch (_: Exception) {
                         attempts++
@@ -448,68 +448,62 @@ fun PageThumbnail(
     }
 
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(4.dp)
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = HojoTheme.colors.headerBg
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            modifier = modifier.fillMaxWidth().padding(4.dp).clickable(onClick = onClick),
+            colors =
+                    CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             when {
                 isLoading -> {
                     CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.Center).size(32.dp),
-                        color = HojoTheme.colors.primary,
-                        strokeWidth = 3.dp
+                            modifier = Modifier.align(Alignment.Center).size(32.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            strokeWidth = 3.dp
                     )
                 }
                 bitmap != null -> {
                     Image(
-                        bitmap = bitmap!!.asImageBitmap(),
-                        contentDescription = "Page ${pageIndex + 1}",
-                        modifier = Modifier.fillMaxSize().padding(8.dp),
-                        contentScale = ContentScale.Fit
+                            bitmap = bitmap!!.asImageBitmap(),
+                            contentDescription = "Page ${pageIndex + 1}",
+                            modifier = Modifier.fillMaxSize().padding(8.dp),
+                            contentScale = ContentScale.Fit
                     )
                 }
                 failed -> {
                     // show retry affordance
                     Column(
-                        modifier = Modifier.align(Alignment.Center),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            modifier = Modifier.align(Alignment.Center),
+                            horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(text = "Failed to load", color = Color.Red)
+                        Text(text = "Failed to load", color = MaterialTheme.colorScheme.error)
                         Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(onClick = { loadKey++ }) {
-                            Text("Retry")
-                        }
+                        TextButton(onClick = { loadKey++ }) { Text("Retry") }
                     }
                 }
                 else -> {
                     Text(
-                        text = "Failed to load",
-                        color = Color.Red,
-                        modifier = Modifier.align(Alignment.Center)
+                            text = "Failed to load",
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.align(Alignment.Center)
                     )
                 }
             }
 
             // Page number badge
             Surface(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(12.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = HojoTheme.colors.primary
+                    modifier = Modifier.align(Alignment.TopEnd).padding(12.dp),
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.primaryContainer
             ) {
                 Text(
-                    text = "${pageIndex + 1}",
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        text = "${pageIndex + 1}",
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
         }
@@ -518,11 +512,11 @@ fun PageThumbnail(
 
 @Composable
 fun FullPagePreviewDialog(
-    file: File,
-    pageIndex: Int,
-    pageCount: Int,
-    onDismiss: () -> Unit,
-    onNavigate: (Int) -> Unit
+        file: File,
+        pageIndex: Int,
+        pageCount: Int,
+        onDismiss: () -> Unit,
+        onNavigate: (Int) -> Unit
 ) {
     var bitmap by remember(pageIndex) { mutableStateOf<Bitmap?>(null) }
     var isLoading by remember(pageIndex) { mutableStateOf(true) }
@@ -542,29 +536,28 @@ fun FullPagePreviewDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(HojoTheme.colors.headerBg)
-                .padding(16.dp)
+                modifier =
+                        Modifier.fillMaxWidth()
+                                .clip(MaterialTheme.shapes.large)
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(16.dp)
         ) {
             // Header with close button
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Page ${pageIndex + 1} of $pageCount",
-                    color = HojoTheme.colors.text,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                        text = "Page ${pageIndex + 1} of $pageCount",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.titleMedium
                 )
                 IconButton(onClick = onDismiss) {
                     Icon(
-                        Icons.Filled.Close,
-                        contentDescription = "Close",
-                        tint = HojoTheme.colors.text
+                            Icons.Filled.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -573,33 +566,37 @@ fun FullPagePreviewDialog(
 
             // Image preview
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(500.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.White)
-                    .border(1.dp, HojoTheme.colors.border, RoundedCornerShape(8.dp))
+                    modifier =
+                            Modifier.fillMaxWidth()
+                                    .height(500.dp)
+                                    .clip(MaterialTheme.shapes.medium)
+                                    .background(Color.White)
+                                    .border(
+                                            1.dp,
+                                            MaterialTheme.colorScheme.outlineVariant,
+                                            MaterialTheme.shapes.medium
+                                    )
             ) {
                 when {
                     isLoading -> {
                         CircularProgressIndicator(
-                            modifier = Modifier.align(Alignment.Center),
-                            color = HojoTheme.colors.primary
+                                modifier = Modifier.align(Alignment.Center),
+                                color = MaterialTheme.colorScheme.primary
                         )
                     }
                     bitmap != null -> {
                         Image(
-                            bitmap = bitmap!!.asImageBitmap(),
-                            contentDescription = "Page ${pageIndex + 1}",
-                            modifier = Modifier.fillMaxSize().padding(8.dp),
-                            contentScale = ContentScale.Fit
+                                bitmap = bitmap!!.asImageBitmap(),
+                                contentDescription = "Page ${pageIndex + 1}",
+                                modifier = Modifier.fillMaxSize().padding(8.dp),
+                                contentScale = ContentScale.Fit
                         )
                     }
                     else -> {
                         Text(
-                            text = "Failed to load page",
-                            color = Color.Red,
-                            modifier = Modifier.align(Alignment.Center)
+                                text = "Failed to load page",
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.align(Alignment.Center)
                         )
                     }
                 }
@@ -607,24 +604,17 @@ fun FullPagePreviewDialog(
 
             // Navigation buttons
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                TextButton(
-                    onClick = { onNavigate(pageIndex - 1) },
-                    enabled = pageIndex > 0
-                ) {
+                TextButton(onClick = { onNavigate(pageIndex - 1) }, enabled = pageIndex > 0) {
                     Text("← Previous")
                 }
 
                 TextButton(
-                    onClick = { onNavigate(pageIndex + 1) },
-                    enabled = pageIndex < pageCount - 1
-                ) {
-                    Text("Next →")
-                }
+                        onClick = { onNavigate(pageIndex + 1) },
+                        enabled = pageIndex < pageCount - 1
+                ) { Text("Next →") }
             }
         }
     }
@@ -667,7 +657,8 @@ private fun safeCacheRemove(cache: LruCache<Int, Bitmap>, key: Int?): Bitmap? {
     }
 }
 
-// Scale a bitmap down if it's larger than max dimensions to reduce memory footprint for thumbnails.
+// Scale a bitmap down if it's larger than max dimensions to reduce memory footprint for
+// thumbnails.
 private fun scaledThumbnail(bmp: Bitmap): Bitmap {
     val maxDim = 600 // reasonable thumbnail max dimension (px)
     val w = bmp.width

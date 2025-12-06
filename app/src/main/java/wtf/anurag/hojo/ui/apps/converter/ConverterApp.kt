@@ -24,6 +24,7 @@ import java.util.Locale
 import wtf.anurag.hojo.ui.theme.HojoTheme
 import wtf.anurag.hojo.ui.viewmodels.ConnectivityViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @RequiresApi(Build.VERSION_CODES.Q)
 @Suppress("DEPRECATION")
 @Composable
@@ -70,41 +71,34 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                         onResult = { uri -> uri?.let { viewModel.importFont(it) } }
                 )
 
-        Column(
-                modifier =
-                        Modifier.fillMaxSize()
-                                .background(HojoTheme.colors.windowBg)
-                                .statusBarsPadding()
-        ) {
-                // Header
-                Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                ) {
+        Scaffold(
+            topBar = {
+                LargeTopAppBar(
+                    title = { Text("EPUB Converter") },
+                    navigationIcon = {
                         IconButton(onClick = onBack) {
-                                Icon(
-                                        Icons.Filled.ArrowBack,
-                                        contentDescription = "Back",
-                                        tint = HojoTheme.colors.text
-                                )
+                            Icon(
+                                Icons.Filled.ArrowBack,
+                                contentDescription = "Back"
+                            )
                         }
-                        Text(
-                                text = "EPUB Converter",
-                                color = HojoTheme.colors.text,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(start = 8.dp)
-                        )
-                }
-
-                Box(modifier = Modifier.fillMaxSize()) {
-                        Column(
-                                modifier =
-                                        Modifier.fillMaxSize()
-                                                .padding(16.dp)
-                                                .verticalScroll(rememberScrollState()),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
+                    },
+                    colors = TopAppBarDefaults.largeTopAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        scrolledContainerColor = MaterialTheme.colorScheme.surface
+                    )
+                )
+            },
+            containerColor = MaterialTheme.colorScheme.background
+        ) { paddingValues ->
+            Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                Column(
+                    modifier =
+                            Modifier.fillMaxSize()
+                                    .padding(horizontal = 16.dp)
+                                    .verticalScroll(rememberScrollState()),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                                 // File Selection
                                 if (selectedFile == null) {
                                         Button(
@@ -116,14 +110,14 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                                                 colors =
                                                         ButtonDefaults.buttonColors(
                                                                 containerColor =
-                                                                        HojoTheme.colors.primary
+                                                                        MaterialTheme.colorScheme.primary
                                                         )
                                         ) { Text("Select EPUB File") }
                                 } else {
                                         Text(
                                                 text =
                                                         "Selected: ${selectedFile?.path?.split("/")?.last()}",
-                                                color = HojoTheme.colors.text,
+                                                color = MaterialTheme.colorScheme.onSurface,
                                                 modifier = Modifier.padding(bottom = 16.dp)
                                         )
 
@@ -154,7 +148,7 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                                                 colors =
                                                         ButtonDefaults.buttonColors(
                                                                 containerColor =
-                                                                        HojoTheme.colors.primary
+                                                                        MaterialTheme.colorScheme.primary
                                                         )
                                         ) { Text("Convert to XTC") }
                                 }
@@ -166,28 +160,28 @@ fun ConverterApp(onBack: () -> Unit, connectivityViewModel: ConnectivityViewMode
                                         is ConverterStatus.ReadingFile ->
                                                 Text(
                                                         "Reading file...",
-                                                        color = HojoTheme.colors.subText
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                         is ConverterStatus.Converting -> {
                                                 LinearProgressIndicator(
                                                         modifier = Modifier.fillMaxWidth(),
-                                                        color = HojoTheme.colors.primary
+                                                        color = MaterialTheme.colorScheme.primary
                                                 )
                                                 Text(
                                                         "Converting: Page ${s.progress}" +
                                                                 if (s.total > 0) " / ${s.total}"
                                                                 else "",
-                                                        color = HojoTheme.colors.subText,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                         modifier = Modifier.padding(top = 8.dp)
                                                 )
                                         }
                                         is ConverterStatus.Uploading -> {
                                                 CircularProgressIndicator(
-                                                        color = HojoTheme.colors.primary
+                                                        color = MaterialTheme.colorScheme.primary
                                                 )
                                                 Text(
                                                         "Uploading to e-paper...",
-                                                        color = HojoTheme.colors.subText,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                         modifier = Modifier.padding(top = 8.dp)
                                                 )
                                         }
@@ -221,9 +215,8 @@ fun SettingsSection(
         Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
                         "Settings",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = HojoTheme.colors.text
+                        style = MaterialTheme.typography.titleLarge,
+                        color = MaterialTheme.colorScheme.onSurface
                 )
 
                 // Font Selection
@@ -234,7 +227,7 @@ fun SettingsSection(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors =
                                         ButtonDefaults.outlinedButtonColors(
-                                                contentColor = HojoTheme.colors.text
+                                                contentColor = MaterialTheme.colorScheme.onSurface
                                         )
                         ) {
                                 Text(
@@ -247,11 +240,11 @@ fun SettingsSection(
                         DropdownMenu(
                                 expanded = expanded,
                                 onDismissRequest = { expanded = false },
-                                modifier = Modifier.background(HojoTheme.colors.windowBg)
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                         ) {
                                 DropdownMenuItem(
                                         text = {
-                                                Text("Default Font", color = HojoTheme.colors.text)
+                                                Text("Default Font", color = MaterialTheme.colorScheme.onSurface)
                                         },
                                         onClick = {
                                                 onUpdate(settings.copy(fontFamily = ""))
@@ -263,7 +256,7 @@ fun SettingsSection(
                                                 text = {
                                                         Text(
                                                                 font.name,
-                                                                color = HojoTheme.colors.text
+                                                                color = MaterialTheme.colorScheme.onSurface
                                                         )
                                                 },
                                                 onClick = {
@@ -285,27 +278,27 @@ fun SettingsSection(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                         colors =
                                 ButtonDefaults.buttonColors(
-                                        containerColor = HojoTheme.colors.primary
+                                        containerColor = MaterialTheme.colorScheme.primary
                                 )
                 ) { Text("Import Font") }
 
                 // Font Size
-                Text("Font Size: ${settings.fontSize}%", color = HojoTheme.colors.subText)
+                Text("Font Size: ${settings.fontSize}%", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Slider(
                         value = settings.fontSize.toFloat(),
                         onValueChange = { onUpdate(settings.copy(fontSize = it.toInt())) },
                         valueRange = 50f..200f,
                         colors =
                                 SliderDefaults.colors(
-                                        thumbColor = HojoTheme.colors.primary,
-                                        activeTrackColor = HojoTheme.colors.primary
+                                        thumbColor = MaterialTheme.colorScheme.primary,
+                                        activeTrackColor = MaterialTheme.colorScheme.primary
                                 )
                 )
 
                 // Line Height
                 Text(
                         "Line Height: ${String.format(Locale.getDefault(), "%.1f", settings.lineHeight)}",
-                        color = HojoTheme.colors.subText
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Slider(
                         value = settings.lineHeight,
@@ -313,8 +306,8 @@ fun SettingsSection(
                         valueRange = 1.0f..2.5f,
                         colors =
                                 SliderDefaults.colors(
-                                        thumbColor = HojoTheme.colors.primary,
-                                        activeTrackColor = HojoTheme.colors.primary
+                                        thumbColor = MaterialTheme.colorScheme.primary,
+                                        activeTrackColor = MaterialTheme.colorScheme.primary
                                 )
                 )
 
@@ -325,17 +318,17 @@ fun SettingsSection(
                                 onCheckedChange = { onUpdate(settings.copy(enableDithering = it)) },
                                 colors =
                                         CheckboxDefaults.colors(
-                                                checkedColor = HojoTheme.colors.primary
+                                                checkedColor = MaterialTheme.colorScheme.primary
                                         )
                         )
-                        Text("Enable Dithering", color = HojoTheme.colors.text)
+                        Text("Enable Dithering", color = MaterialTheme.colorScheme.onSurface)
                 }
 
                 // Color Mode
                 var colorModeExpanded by remember { mutableStateOf(false) }
                 Text(
                         "Color Mode",
-                        color = HojoTheme.colors.subText,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)
                 )
                 Box(modifier = Modifier.fillMaxWidth()) {
@@ -344,7 +337,7 @@ fun SettingsSection(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors =
                                         ButtonDefaults.outlinedButtonColors(
-                                                contentColor = HojoTheme.colors.text
+                                                contentColor = MaterialTheme.colorScheme.onSurface
                                         )
                         ) {
                                 Text(
@@ -357,11 +350,11 @@ fun SettingsSection(
                         DropdownMenu(
                                 expanded = colorModeExpanded,
                                 onDismissRequest = { colorModeExpanded = false },
-                                modifier = Modifier.background(HojoTheme.colors.windowBg)
+                                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                         ) {
                                 DropdownMenuItem(
                                         text = {
-                                                Text("Grayscale (4-level)", color = HojoTheme.colors.text)
+                                                Text("Grayscale (4-level)", color = MaterialTheme.colorScheme.onSurface)
                                         },
                                         onClick = {
                                                 onUpdate(settings.copy(colorMode = XtcEncoder.ColorMode.GRAYSCALE_4))
@@ -370,7 +363,7 @@ fun SettingsSection(
                                 )
                                 DropdownMenuItem(
                                         text = {
-                                                Text("Monochrome (1-bit)", color = HojoTheme.colors.text)
+                                                Text("Monochrome (1-bit)", color = MaterialTheme.colorScheme.onSurface)
                                         },
                                         onClick = {
                                                 onUpdate(settings.copy(colorMode = XtcEncoder.ColorMode.MONOCHROME))

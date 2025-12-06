@@ -2,23 +2,22 @@ package wtf.anurag.hojo.ui.apps.filemanager
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.navigation.compose.hiltViewModel
-import wtf.anurag.hojo.ui.theme.HojoTheme
 import wtf.anurag.hojo.ui.viewmodels.FileManagerViewModel
 
 @Composable
 fun FileManagerApp(onBack: () -> Unit) {
     val context = LocalContext.current
-    val colors = HojoTheme.colors
 
     // Use the Compose viewModel() helper so we don't pass incorrect constructor arguments here.
     val fileManagerViewModel: FileManagerViewModel = hiltViewModel()
@@ -52,33 +51,38 @@ fun FileManagerApp(onBack: () -> Unit) {
                 }
             }
 
-    Column(modifier = Modifier.fillMaxSize().background(colors.windowBg).statusBarsPadding()) {
-        FileManagerHeader(
-                currentPath = currentPath,
-                onBack = {
-                    if (!fileManagerViewModel.handleGoBack()) {
-                        onBack()
-                    }
-                },
-                onRefresh = { fileManagerViewModel.loadFiles() }
-        )
+    Scaffold(
+            topBar = {
+                FileManagerHeader(
+                        currentPath = currentPath,
+                        onBack = {
+                            if (!fileManagerViewModel.handleGoBack()) {
+                                onBack()
+                            }
+                        },
+                        onRefresh = { fileManagerViewModel.loadFiles() }
+                )
+            },
+            containerColor = MaterialTheme.colorScheme.background
+    ) { paddingValues ->
+        Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+            FileManagerToolbar(
+                    onCreateFolder = { fileManagerViewModel.handleCreateFolder() },
+                    onUpload = { launcher.launch("*/*") }
+            )
 
-        FileManagerToolbar(
-                onCreateFolder = { fileManagerViewModel.handleCreateFolder() },
-                onUpload = { launcher.launch("*/*") }
-        )
+            UploadProgressIndicator(uploadProgress = uploadProgress)
 
-        UploadProgressIndicator(uploadProgress = uploadProgress)
-
-        FileGrid(
-                files = files,
-                isLoading = isLoading,
-                onNavigate = { fileManagerViewModel.handleNavigate(it) },
-                onRename = { fileManagerViewModel.handleRename(it) },
-                onDelete = { fileManagerViewModel.handleDelete(it) },
-                onDownload = { fileManagerViewModel.handleDownload(it) },
-                errorMessage = errorMessage
-        )
+            FileGrid(
+                    files = files,
+                    isLoading = isLoading,
+                    onNavigate = { fileManagerViewModel.handleNavigate(it) },
+                    onRename = { fileManagerViewModel.handleRename(it) },
+                    onDelete = { fileManagerViewModel.handleDelete(it) },
+                    onDownload = { fileManagerViewModel.handleDownload(it) },
+                    errorMessage = errorMessage
+            )
+        }
     }
 
     InputModal(

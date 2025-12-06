@@ -2,10 +2,12 @@ package wtf.anurag.hojo.ui.apps.wallpaper
 
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,12 +33,19 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LargeTopAppBar
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -54,7 +62,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.canhub.cropper.CropImageView
@@ -65,11 +72,10 @@ import wtf.anurag.hojo.ui.viewmodels.DEFAULT_FILTERS
 import wtf.anurag.hojo.ui.viewmodels.INK_SCREEN_PRESET
 import wtf.anurag.hojo.ui.viewmodels.WallpaperViewModel
 
+@RequiresApi(Build.VERSION_CODES.Q)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WallpaperEditor(
-        onBack: () -> Unit,
-        viewModel: WallpaperViewModel = hiltViewModel()
-) {
+fun WallpaperEditor(onBack: () -> Unit, viewModel: WallpaperViewModel = hiltViewModel()) {
         val colors = HojoTheme.colors
         val context = LocalContext.current
 
@@ -110,136 +116,145 @@ fun WallpaperEditor(
 
         if (croppingUri != null) {
                 val isPortrait = template == "portrait"
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-                        AndroidView(
-                                modifier = Modifier.fillMaxSize().padding(bottom = 80.dp),
-                                factory = { ctx ->
-                                        CropImageView(ctx).apply {
-                                                layoutParams =
-                                                        FrameLayout.LayoutParams(
-                                                                ViewGroup.LayoutParams.MATCH_PARENT,
-                                                                ViewGroup.LayoutParams.MATCH_PARENT
+                Scaffold(
+                        topBar = {
+                                TopAppBar(
+                                        title = { Text("Crop Image") },
+                                        navigationIcon = {
+                                                IconButton(onClick = { croppingUri = null }) {
+                                                        Icon(
+                                                                Icons.Default.Close,
+                                                                contentDescription = "Cancel",
+                                                                tint =
+                                                                        MaterialTheme.colorScheme
+                                                                                .error
                                                         )
-                                                setImageUriAsync(croppingUri)
-                                                setAspectRatio(
-                                                        if (isPortrait) 3 else 5,
-                                                        if (isPortrait) 5 else 3
-                                                )
-                                                setFixedAspectRatio(true)
-                                                guidelines = CropImageView.Guidelines.ON
-                                                cropImageView = this
-                                        }
-                                }
-                        )
-
-                        // Crop Controls
-                        Row(
-                                modifier =
-                                        Modifier.fillMaxWidth()
-                                                .align(Alignment.BottomCenter)
-                                                .background(colors.windowBg)
-                                                .padding(16.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                        ) {
-                                IconButton(onClick = { croppingUri = null }) {
-                                        Icon(
-                                                Icons.Default.Close,
-                                                contentDescription = "Cancel",
-                                                tint = colors.error
-                                        )
-                                }
-                                Text(
-                                        "Crop Image",
-                                        color = colors.text,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 18.sp
-                                )
-                                IconButton(
-                                        onClick = {
-                                                cropImageView?.let { view ->
-                                                        val reqWidth = if (isPortrait) 480 else 800
-                                                        val reqHeight = if (isPortrait) 800 else 480
-                                                        val cropped =
-                                                                view.getCroppedImage(
-                                                                        reqWidth,
-                                                                        reqHeight
-                                                                )
-                                                        if (cropped != null) {
-                                                                // Save cropped bitmap to file to
-                                                                // get URI
-                                                                // Or just pass bitmap to ViewModel
-                                                                // if it supports it
-                                                                // ViewModel currently takes URI and
-                                                                // loads bitmap.
-                                                                // Let's modify ViewModel to accept
-                                                                // Bitmap or just save to temp file
-                                                                // here.
-
-                                                                // Saving to temp file
-                                                                val file =
-                                                                        File(
-                                                                                context.cacheDir,
-                                                                                "cropped_temp.jpg"
-                                                                        )
-                                                                FileOutputStream(file).use { out ->
-                                                                        cropped.compress(
-                                                                                Bitmap.CompressFormat
-                                                                                        .JPEG,
-                                                                                100,
-                                                                                out
-                                                                        )
+                                                }
+                                        },
+                                        actions = {
+                                                IconButton(
+                                                        onClick = {
+                                                                cropImageView?.let { view ->
+                                                                        val reqWidth =
+                                                                                if (isPortrait) 480
+                                                                                else 800
+                                                                        val reqHeight =
+                                                                                if (isPortrait) 800
+                                                                                else 480
+                                                                        val cropped =
+                                                                                view.getCroppedImage(
+                                                                                        reqWidth,
+                                                                                        reqHeight
+                                                                                )
+                                                                        if (cropped != null) {
+                                                                                val file =
+                                                                                        File(
+                                                                                                context.cacheDir,
+                                                                                                "cropped_temp.jpg"
+                                                                                        )
+                                                                                FileOutputStream(
+                                                                                                file
+                                                                                        )
+                                                                                        .use { out
+                                                                                                ->
+                                                                                                cropped.compress(
+                                                                                                        Bitmap.CompressFormat
+                                                                                                                .JPEG,
+                                                                                                        100,
+                                                                                                        out
+                                                                                                )
+                                                                                        }
+                                                                                viewModel
+                                                                                        .setImageUri(
+                                                                                                Uri.fromFile(
+                                                                                                        file
+                                                                                                )
+                                                                                        )
+                                                                                croppingUri = null
+                                                                        }
                                                                 }
-                                                                viewModel.setImageUri(
-                                                                        Uri.fromFile(file)
-                                                                )
-                                                                croppingUri = null
                                                         }
+                                                ) {
+                                                        Icon(
+                                                                Icons.Default.Check,
+                                                                contentDescription = "Done",
+                                                                tint =
+                                                                        MaterialTheme.colorScheme
+                                                                                .primary
+                                                        )
+                                                }
+                                        },
+                                        colors =
+                                                TopAppBarDefaults.topAppBarColors(
+                                                        containerColor =
+                                                                MaterialTheme.colorScheme.surface,
+                                                        titleContentColor =
+                                                                MaterialTheme.colorScheme.onSurface
+                                                )
+                                )
+                        }
+                ) { paddingValues ->
+                        Box(
+                                modifier =
+                                        Modifier.fillMaxSize()
+                                                .padding(paddingValues)
+                                                .background(Color.Black)
+                        ) {
+                                AndroidView(
+                                        modifier = Modifier.fillMaxSize(),
+                                        factory = { ctx ->
+                                                CropImageView(ctx).apply {
+                                                        layoutParams =
+                                                                FrameLayout.LayoutParams(
+                                                                        ViewGroup.LayoutParams
+                                                                                .MATCH_PARENT,
+                                                                        ViewGroup.LayoutParams
+                                                                                .MATCH_PARENT
+                                                                )
+                                                        setImageUriAsync(croppingUri)
+                                                        setAspectRatio(
+                                                                if (isPortrait) 3 else 5,
+                                                                if (isPortrait) 5 else 3
+                                                        )
+                                                        setFixedAspectRatio(true)
+                                                        guidelines = CropImageView.Guidelines.ON
+                                                        cropImageView = this
                                                 }
                                         }
-                                ) {
-                                        Icon(
-                                                Icons.Default.Check,
-                                                contentDescription = "Done",
-                                                tint = colors.primary
-                                        )
-                                }
+                                )
                         }
                 }
                 return
         }
 
         if (template == null) {
-                Column(
-                        modifier =
-                                Modifier.fillMaxSize()
-                                        .background(colors.windowBg)
-                                        .statusBarsPadding()
-                ) {
-                        // Header
-                        Row(
-                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                        ) {
-                                Text(
-                                        text = "Wallpaper",
-                                        color = colors.text,
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold
+                Scaffold(
+                        topBar = {
+                                CenterAlignedTopAppBar(
+                                        title = { Text("Wallpaper") },
+                                        colors =
+                                                TopAppBarDefaults.centerAlignedTopAppBarColors(
+                                                        containerColor =
+                                                                MaterialTheme.colorScheme.surface,
+                                                        titleContentColor =
+                                                                MaterialTheme.colorScheme.onSurface
+                                                )
                                 )
-                        }
-
+                        },
+                        containerColor = MaterialTheme.colorScheme.background
+                ) { paddingValues ->
                         Column(
-                                modifier = Modifier.fillMaxSize().padding(20.dp),
+                                modifier =
+                                        Modifier.fillMaxSize()
+                                                .padding(paddingValues)
+                                                .padding(20.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                         ) {
                                 Text(
                                         text = "Select Orientation",
-                                        color = colors.subText,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.titleMedium,
                                         modifier = Modifier.padding(bottom = 24.dp)
                                 )
 
@@ -247,12 +262,10 @@ fun WallpaperEditor(
                                         // Portrait
                                         Column(
                                                 modifier =
-                                                        Modifier.clip(RoundedCornerShape(24.dp))
-                                                                .background(colors.headerBg)
-                                                                .border(
-                                                                        1.dp,
-                                                                        colors.border,
-                                                                        RoundedCornerShape(24.dp)
+                                                        Modifier.clip(MaterialTheme.shapes.medium)
+                                                                .background(
+                                                                        MaterialTheme.colorScheme
+                                                                                .surfaceVariant
                                                                 )
                                                                 .clickable {
                                                                         viewModel.setTemplate(
@@ -267,7 +280,9 @@ fun WallpaperEditor(
                                                                 Modifier.width(60.dp)
                                                                         .height(100.dp)
                                                                         .background(
-                                                                                colors.primary,
+                                                                                MaterialTheme
+                                                                                        .colorScheme
+                                                                                        .primary,
                                                                                 RoundedCornerShape(
                                                                                         8.dp
                                                                                 )
@@ -277,26 +292,25 @@ fun WallpaperEditor(
                                                 Spacer(modifier = Modifier.height(16.dp))
                                                 Text(
                                                         text = "Portrait",
-                                                        color = colors.text,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        fontSize = 16.sp
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        style = MaterialTheme.typography.titleMedium
                                                 )
                                                 Text(
                                                         text = "3:5",
-                                                        color = colors.subText,
-                                                        fontSize = 13.sp
+                                                        color =
+                                                                MaterialTheme.colorScheme
+                                                                        .onSurfaceVariant,
+                                                        style = MaterialTheme.typography.bodySmall
                                                 )
                                         }
 
                                         // Landscape
                                         Column(
                                                 modifier =
-                                                        Modifier.clip(RoundedCornerShape(24.dp))
-                                                                .background(colors.headerBg)
-                                                                .border(
-                                                                        1.dp,
-                                                                        colors.border,
-                                                                        RoundedCornerShape(24.dp)
+                                                        Modifier.clip(MaterialTheme.shapes.medium)
+                                                                .background(
+                                                                        MaterialTheme.colorScheme
+                                                                                .surfaceVariant
                                                                 )
                                                                 .clickable {
                                                                         viewModel.setTemplate(
@@ -311,7 +325,9 @@ fun WallpaperEditor(
                                                                 Modifier.width(100.dp)
                                                                         .height(60.dp)
                                                                         .background(
-                                                                                colors.primary,
+                                                                                MaterialTheme
+                                                                                        .colorScheme
+                                                                                        .primary,
                                                                                 RoundedCornerShape(
                                                                                         8.dp
                                                                                 )
@@ -321,14 +337,15 @@ fun WallpaperEditor(
                                                 Spacer(modifier = Modifier.height(16.dp))
                                                 Text(
                                                         text = "Landscape",
-                                                        color = colors.text,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                        fontSize = 16.sp
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        style = MaterialTheme.typography.titleMedium
                                                 )
                                                 Text(
                                                         text = "5:3",
-                                                        color = colors.subText,
-                                                        fontSize = 13.sp
+                                                        color =
+                                                                MaterialTheme.colorScheme
+                                                                        .onSurfaceVariant,
+                                                        style = MaterialTheme.typography.bodySmall
                                                 )
                                         }
                                 }
@@ -338,50 +355,36 @@ fun WallpaperEditor(
         }
 
         if (imageUri == null) {
-                Column(
-                        modifier =
-                                Modifier.fillMaxSize()
-                                        .background(colors.windowBg)
-                                        .statusBarsPadding()
-                ) {
-                        // Header
-                        Row(
-                                modifier =
-                                        Modifier.fillMaxWidth()
-                                                .border(
-                                                        0.dp,
-                                                        Color.Transparent
-                                                ) // Hack for bottom border?
-                                                .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                                Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "Back",
-                                        tint = colors.text,
-                                        modifier =
-                                                Modifier.size(24.dp).clickable {
-                                                        viewModel.setTemplate(null)
+                Scaffold(
+                        topBar = {
+                                LargeTopAppBar(
+                                        title = { Text("Select Image") },
+                                        navigationIcon = {
+                                                IconButton(
+                                                        onClick = { viewModel.setTemplate(null) }
+                                                ) {
+                                                        Icon(
+                                                                Icons.AutoMirrored.Filled.ArrowBack,
+                                                                contentDescription = "Back"
+                                                        )
                                                 }
+                                        },
+                                        colors =
+                                                TopAppBarDefaults.largeTopAppBarColors(
+                                                        containerColor =
+                                                                MaterialTheme.colorScheme.surface,
+                                                        scrolledContainerColor =
+                                                                MaterialTheme.colorScheme.surface
+                                                )
                                 )
-                                Text(
-                                        text = "Select Image",
-                                        color = colors.text,
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.width(24.dp))
-                        }
-                        Box(
-                                modifier =
-                                        Modifier.fillMaxWidth()
-                                                .height(1.dp)
-                                                .background(colors.border)
-                        )
-
+                        },
+                        containerColor = MaterialTheme.colorScheme.background
+                ) { paddingValues ->
                         Column(
-                                modifier = Modifier.fillMaxSize().padding(20.dp),
+                                modifier =
+                                        Modifier.fillMaxSize()
+                                                .padding(paddingValues)
+                                                .padding(20.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.Center
                         ) {
@@ -389,8 +392,10 @@ fun WallpaperEditor(
                                 Row(
                                         modifier =
                                                 Modifier.width(200.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .background(colors.primary)
+                                                        .clip(MaterialTheme.shapes.small)
+                                                        .background(
+                                                                MaterialTheme.colorScheme.primary
+                                                        )
                                                         .clickable {
                                                                 takePictureLauncher.launch(null)
                                                         }
@@ -404,15 +409,14 @@ fun WallpaperEditor(
                                         Icon(
                                                 Icons.Default.CameraAlt,
                                                 null,
-                                                tint = Color.White,
+                                                tint = MaterialTheme.colorScheme.onPrimary,
                                                 modifier = Modifier.size(24.dp)
                                         )
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Text(
                                                 "Take Photo",
-                                                color = Color.White,
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontSize = 16.sp
+                                                color = MaterialTheme.colorScheme.onPrimary,
+                                                style = MaterialTheme.typography.labelLarge
                                         )
                                 }
 
@@ -422,12 +426,10 @@ fun WallpaperEditor(
                                 Row(
                                         modifier =
                                                 Modifier.width(200.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .background(colors.headerBg)
-                                                        .border(
-                                                                1.dp,
-                                                                colors.border,
-                                                                RoundedCornerShape(8.dp)
+                                                        .clip(MaterialTheme.shapes.small)
+                                                        .background(
+                                                                MaterialTheme.colorScheme
+                                                                        .surfaceVariant
                                                         )
                                                         .clickable { launcher.launch("image/*") }
                                                         .padding(
@@ -440,15 +442,14 @@ fun WallpaperEditor(
                                         Icon(
                                                 Icons.Default.Image,
                                                 null,
-                                                tint = colors.text,
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 modifier = Modifier.size(24.dp)
                                         )
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Text(
                                                 "From Album",
-                                                color = colors.text,
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontSize = 16.sp
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                style = MaterialTheme.typography.labelLarge
                                         )
                                 }
                         }
@@ -457,142 +458,181 @@ fun WallpaperEditor(
         }
 
         // Editor
-        Column(modifier = Modifier.fillMaxSize().background(colors.windowBg).statusBarsPadding()) {
-                // Header
-                Row(
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                        Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
-                                tint = colors.text,
-                                modifier = Modifier.size(24.dp).clickable { onBack() }
-                        )
-                        Text(
-                                text = "Edit",
-                                color = colors.text,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
-                        )
-                        if (saving) {
-                                CircularProgressIndicator(
-                                        color = colors.primary,
-                                        modifier = Modifier.size(24.dp)
-                                )
-                        } else {
-                                Text(
-                                        text = "Save",
-                                        color = colors.primary,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 16.sp,
-                                        modifier =
-                                                Modifier.clickable {
-                                                        viewModel.saveAndUpload {
-                                                                // Success - navigate back
-                                                                onBack()
-                                                        }
-                                                }
-                                )
-                        }
-                }
-                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(colors.border))
-
-                // Error message
-                errorMessage?.let { error ->
-                        Box(
-                                modifier =
-                                        Modifier.fillMaxWidth()
-                                                .background(Color(0x1AEF4444))
-                                                .padding(12.dp)
-                        ) { Text(text = error, color = colors.error, fontSize = 14.sp) }
-                }
-
-                Column(
-                        modifier =
-                                Modifier.weight(1f)
-                                        .verticalScroll(rememberScrollState())
-                                        .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                        // Preview
-                        Box(
-                                modifier =
-                                        Modifier.padding(bottom = 20.dp)
-                                                .border(1.dp, Color(0xFFDDDDDD))
-                                // Shadow simulation
-                                ) {
-                                val width = 300.dp
-                                val height = if (template == "portrait") 500.dp else 180.dp
-
-                                if (bitmap != null) {
-                                        Image(
-                                                bitmap = bitmap!!.asImageBitmap(),
-                                                contentDescription = null,
-                                                modifier = Modifier.size(width, height),
-                                                contentScale = ContentScale.Crop,
-                                                colorFilter =
-                                                        ColorFilter.colorMatrix(
-                                                                viewModel.generateColorMatrix(
-                                                                        filters
-                                                                )
-                                                        )
+        Scaffold(
+                topBar = {
+                        TopAppBar(
+                                title = { Text("Edit") },
+                                navigationIcon = {
+                                        IconButton(onClick = onBack) {
+                                                Icon(
+                                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                                        contentDescription = "Back"
+                                                )
+                                        }
+                                },
+                                actions = {
+                                        if (saving) {
+                                                CircularProgressIndicator(
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(24.dp)
+                                                )
+                                        } else {
+                                                Text(
+                                                        text = "Save",
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        style = MaterialTheme.typography.labelLarge,
+                                                        modifier =
+                                                                Modifier.clickable {
+                                                                                viewModel
+                                                                                        .saveAndUpload {
+                                                                                                // Success - navigate back
+                                                                                                onBack()
+                                                                                        }
+                                                                        }
+                                                                        .padding(horizontal = 16.dp)
+                                                )
+                                        }
+                                },
+                                colors =
+                                        TopAppBarDefaults.topAppBarColors(
+                                                containerColor = MaterialTheme.colorScheme.surface,
+                                                titleContentColor =
+                                                        MaterialTheme.colorScheme.onSurface
                                         )
-                                }
-                        }
-
-                        // Controls
-                        Column(
-                                modifier =
-                                        Modifier.fillMaxWidth()
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(colors.contentBg)
-                                                .padding(16.dp)
-                        ) {
-                                // Presets
-                                Row(
-                                        modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                        )
+                },
+                containerColor = MaterialTheme.colorScheme.background
+        ) { paddingValues ->
+                Column(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
+                        // Error message
+                        errorMessage?.let { error ->
+                                Box(
+                                        modifier =
+                                                Modifier.fillMaxWidth()
+                                                        .background(
+                                                                MaterialTheme.colorScheme
+                                                                        .errorContainer
+                                                        )
+                                                        .padding(12.dp)
                                 ) {
                                         Text(
-                                                text = "Reset",
-                                                color = colors.primary,
-                                                modifier =
-                                                        Modifier.clickable {
-                                                                viewModel.setFilters(
-                                                                        DEFAULT_FILTERS
-                                                                )
-                                                        }
+                                                text = error,
+                                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                                style = MaterialTheme.typography.bodyMedium
                                         )
-                                        Box(
-                                                modifier =
-                                                        Modifier.clip(RoundedCornerShape(16.dp))
-                                                                .background(colors.primary)
-                                                                .clickable {
-                                                                        viewModel.setFilters(
-                                                                                INK_SCREEN_PRESET
-                                                                        )
-                                                                }
-                                                                .padding(
-                                                                        vertical = 6.dp,
-                                                                        horizontal = 12.dp
+                                }
+                        }
+
+                        Column(
+                                modifier =
+                                        Modifier.weight(1f)
+                                                .verticalScroll(rememberScrollState())
+                                                .padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                                // Preview
+                                Box(
+                                        modifier =
+                                                Modifier.padding(bottom = 20.dp)
+                                                        .border(
+                                                                1.dp,
+                                                                MaterialTheme.colorScheme
+                                                                        .outlineVariant
+                                                        )
+                                        // Shadow simulation
+                                        ) {
+                                        val width = 300.dp
+                                        val height = if (template == "portrait") 500.dp else 180.dp
+
+                                        if (bitmap != null) {
+                                                Image(
+                                                        bitmap = bitmap!!.asImageBitmap(),
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(width, height),
+                                                        contentScale = ContentScale.Crop,
+                                                        colorFilter =
+                                                                ColorFilter.colorMatrix(
+                                                                        viewModel
+                                                                                .generateColorMatrix(
+                                                                                        filters
+                                                                                )
                                                                 )
-                                        ) { Text(text = "Ink Screen", color = Color.White) }
+                                                )
+                                        }
                                 }
 
-                                FilterSlider("Grayscale", filters.grayscale, 0f, 100f) {
-                                        viewModel.setFilters(filters.copy(grayscale = it))
-                                }
-                                FilterSlider("Contrast", filters.contrast, 0f, 150f) {
-                                        viewModel.setFilters(filters.copy(contrast = it))
-                                }
-                                FilterSlider("Brightness", filters.brightness, 0f, 200f) {
-                                        viewModel.setFilters(filters.copy(brightness = it))
-                                }
-                                FilterSlider("Saturation", filters.saturation, 0f, 200f) {
-                                        viewModel.setFilters(filters.copy(saturation = it))
+                                // Controls
+                                Column(
+                                        modifier =
+                                                Modifier.fillMaxWidth()
+                                                        .clip(MaterialTheme.shapes.medium)
+                                                        .background(
+                                                                MaterialTheme.colorScheme
+                                                                        .surfaceVariant
+                                                        )
+                                                        .padding(16.dp)
+                                ) {
+                                        // Presets
+                                        Row(
+                                                modifier =
+                                                        Modifier.fillMaxWidth()
+                                                                .padding(bottom = 20.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                                Text(
+                                                        text = "Reset",
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        modifier =
+                                                                Modifier.clickable {
+                                                                        viewModel.setFilters(
+                                                                                DEFAULT_FILTERS
+                                                                        )
+                                                                }
+                                                )
+                                                Box(
+                                                        modifier =
+                                                                Modifier.clip(
+                                                                                MaterialTheme.shapes
+                                                                                        .small
+                                                                        )
+                                                                        .background(
+                                                                                MaterialTheme
+                                                                                        .colorScheme
+                                                                                        .primary
+                                                                        )
+                                                                        .clickable {
+                                                                                viewModel
+                                                                                        .setFilters(
+                                                                                                INK_SCREEN_PRESET
+                                                                                        )
+                                                                        }
+                                                                        .padding(
+                                                                                vertical = 6.dp,
+                                                                                horizontal = 12.dp
+                                                                        )
+                                                ) {
+                                                        Text(
+                                                                text = "Ink Screen",
+                                                                color =
+                                                                        MaterialTheme.colorScheme
+                                                                                .onPrimary
+                                                        )
+                                                }
+                                        }
+
+                                        FilterSlider("Grayscale", filters.grayscale, 0f, 100f) {
+                                                viewModel.setFilters(filters.copy(grayscale = it))
+                                        }
+                                        FilterSlider("Contrast", filters.contrast, 0f, 150f) {
+                                                viewModel.setFilters(filters.copy(contrast = it))
+                                        }
+                                        FilterSlider("Brightness", filters.brightness, 0f, 200f) {
+                                                viewModel.setFilters(filters.copy(brightness = it))
+                                        }
+                                        FilterSlider("Saturation", filters.saturation, 0f, 200f) {
+                                                viewModel.setFilters(filters.copy(saturation = it))
+                                        }
                                 }
                         }
                 }
@@ -601,7 +641,6 @@ fun WallpaperEditor(
 
 @Composable
 fun FilterSlider(label: String, value: Float, min: Float, max: Float, onChange: (Float) -> Unit) {
-        val colors = HojoTheme.colors
         Column(modifier = Modifier.padding(bottom = 16.dp)) {
                 Row(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
@@ -609,14 +648,14 @@ fun FilterSlider(label: String, value: Float, min: Float, max: Float, onChange: 
                 ) {
                         Text(
                                 text = label,
-                                color = colors.text,
-                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium
                         )
                         Text(
                                 text = Math.round(value).toString(),
-                                color = colors.subText,
-                                fontSize = 12.sp
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall
                         )
                 }
                 Slider(
@@ -625,9 +664,10 @@ fun FilterSlider(label: String, value: Float, min: Float, max: Float, onChange: 
                         valueRange = min..max,
                         colors =
                                 SliderDefaults.colors(
-                                        thumbColor = colors.primary,
-                                        activeTrackColor = colors.primary,
-                                        inactiveTrackColor = colors.border
+                                        thumbColor = MaterialTheme.colorScheme.primary,
+                                        activeTrackColor = MaterialTheme.colorScheme.primary,
+                                        inactiveTrackColor =
+                                                MaterialTheme.colorScheme.surfaceVariant
                                 )
                 )
         }
