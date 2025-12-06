@@ -41,7 +41,6 @@ import java.io.File
 @Composable
 fun MainScreen() {
         val navController = rememberNavController()
-        val colors = HojoTheme.colors
 
         NavHost(navController = navController, startDestination = "home") {
                 composable(
@@ -140,7 +139,7 @@ fun MainScreen() {
                                 Column(
                                 modifier =
                                         Modifier.fillMaxSize()
-                                                .background(colors.windowBg)
+                                                .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
                                                 .statusBarsPadding()
                                                 .padding(16.dp)
                         ) {
