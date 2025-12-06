@@ -16,6 +16,9 @@ import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.style.MetricAffectingSpan
+import java.io.File
+import java.io.FileOutputStream
+import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.ceil
@@ -491,7 +494,209 @@ object XtcEncoder {
     }
 
     /**
+     * Streaming XTC writer that writes pages directly to disk to avoid OOM.
+     * Reserves space for header + index upfront, writes pages directly to final position.
+     * Only seeks back to write the header/index at the end - no data copying needed.
+     */
+    class XtcStreamWriter(
+        private val outputFile: File,
+        estimatedMaxPages: Int = DEFAULT_MAX_PAGES
+    ) {
+        companion object {
+            // 10,000 pages covers most books (16 bytes per index entry = 160KB reserved)
+            const val DEFAULT_MAX_PAGES = 10000
+        }
+
+        private val pageSizes = mutableListOf<Int>()
+        private var raf: RandomAccessFile? = null
+        private var reservedIndexSize: Int = 0
+        private var dataStartOffset: Long = 0
+
+        fun start(title: String, author: String) {
+            raf = RandomAccessFile(outputFile, "rw")
+            raf?.setLength(0)
+
+            // Calculate reserved space for header + metadata + index
+            reservedIndexSize = estimatedMaxPages * XTC_INDEX_ENTRY_SIZE
+            dataStartOffset = (XTC_HEADER_SIZE + XTC_METADATA_SIZE + reservedIndexSize).toLong()
+
+            // Seek to data start position - we'll write header/index at the end
+            raf?.seek(dataStartOffset)
+        }
+
+        private var estimatedMaxPages: Int = DEFAULT_MAX_PAGES
+
+        fun writePage(pageData: ByteArray) {
+            val file = raf ?: return
+
+            // Check if we've exceeded reserved index space
+            if (pageSizes.size >= estimatedMaxPages) {
+                // Need to expand - shift all existing page data
+                expandIndexSpace(file)
+            }
+
+            pageSizes.add(pageData.size)
+            file.write(pageData)
+        }
+
+        private fun expandIndexSpace(file: RandomAccessFile) {
+            val oldReservedSize = reservedIndexSize
+            val newMaxPages = estimatedMaxPages * 2
+            val newReservedSize = newMaxPages * XTC_INDEX_ENTRY_SIZE
+            val additionalSpace = newReservedSize - oldReservedSize
+
+            val currentPos = file.filePointer
+            val pageDataSize = currentPos - dataStartOffset
+
+            // Extend file and shift page data
+            file.setLength(file.length() + additionalSpace)
+
+            val chunkSize = 65536
+            val buffer = ByteArray(chunkSize)
+            var remaining = pageDataSize
+            while (remaining > 0) {
+                val readSize = minOf(remaining, chunkSize.toLong()).toInt()
+                val srcPos = dataStartOffset + remaining - readSize
+                val dstPos = srcPos + additionalSpace
+
+                file.seek(srcPos)
+                file.readFully(buffer, 0, readSize)
+                file.seek(dstPos)
+                file.write(buffer, 0, readSize)
+
+                remaining -= readSize
+            }
+
+            // Update offsets
+            reservedIndexSize = newReservedSize
+            dataStartOffset += additionalSpace
+            estimatedMaxPages = newMaxPages
+
+            // Seek to end for next page write
+            file.seek(dataStartOffset + pageDataSize)
+        }
+
+        fun finish(title: String, author: String) {
+            val file = raf ?: return
+
+            if (pageSizes.isEmpty()) {
+                file.close()
+                raf = null
+                throw IllegalStateException("No pages rendered")
+            }
+
+            val pageCount = pageSizes.size
+            val chapters = emptyList<ChapterInfo>()
+            val chaptersSize = chapters.size * XTC_CHAPTER_ENTRY_SIZE
+            val actualIndexSize = pageCount * XTC_INDEX_ENTRY_SIZE
+
+            val metadataOffset = XTC_HEADER_SIZE
+            val chaptersOffset = metadataOffset + XTC_METADATA_SIZE
+            val indexOffset = chaptersOffset + chaptersSize
+
+            // Calculate actual data offset (using reserved space)
+            val actualDataOffset = indexOffset + actualIndexSize
+
+            // If we reserved more space than needed, we need to shift data back
+            val unusedSpace = reservedIndexSize - actualIndexSize
+            if (unusedSpace > 0) {
+                // Shift page data to close the gap
+                val currentDataStart = dataStartOffset
+                val newDataStart = (XTC_HEADER_SIZE + XTC_METADATA_SIZE + actualIndexSize).toLong()
+                val pageDataSize = file.length() - currentDataStart
+
+                val chunkSize = 65536
+                val buffer = ByteArray(chunkSize)
+                var offset = 0L
+                while (offset < pageDataSize) {
+                    val readSize = minOf(pageDataSize - offset, chunkSize.toLong()).toInt()
+                    file.seek(currentDataStart + offset)
+                    file.readFully(buffer, 0, readSize)
+                    file.seek(newDataStart + offset)
+                    file.write(buffer, 0, readSize)
+                    offset += readSize
+                }
+
+                // Truncate file to remove unused space
+                file.setLength(newDataStart + pageDataSize)
+            }
+
+            // Seek to beginning and write header
+            file.seek(0)
+
+            // Write header (48 bytes)
+            val headerBuffer = ByteBuffer.allocate(XTC_HEADER_SIZE)
+            headerBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            headerBuffer.put(0x58.toByte()) // X
+            headerBuffer.put(0x54.toByte()) // T
+            headerBuffer.put(0x43.toByte()) // C
+            headerBuffer.put(0x00.toByte())
+            headerBuffer.putShort(0x0100.toShort()) // version
+            headerBuffer.putShort(pageCount.toShort())
+            headerBuffer.put(0.toByte()) // readDirection = L→R
+            headerBuffer.put(1.toByte()) // hasMetadata
+            headerBuffer.put(0.toByte()) // hasThumbnails
+            headerBuffer.put(if (chapters.isNotEmpty()) 1.toByte() else 0.toByte())
+            headerBuffer.putInt(1) // currentPage (1-based)
+            headerBuffer.putLong(metadataOffset.toLong())
+            headerBuffer.putLong(indexOffset.toLong())
+            headerBuffer.putLong(actualDataOffset.toLong())
+            headerBuffer.putLong(0L) // thumbOffset
+            file.write(headerBuffer.array())
+
+            // Write metadata (256 bytes)
+            val metaBuffer = ByteBuffer.allocate(XTC_METADATA_SIZE)
+            metaBuffer.order(ByteOrder.LITTLE_ENDIAN)
+
+            val sanitizedTitle = title.take(127).toByteArray(Charsets.UTF_8)
+            metaBuffer.put(sanitizedTitle)
+            metaBuffer.position(128)
+
+            val sanitizedAuthor = author.take(63).toByteArray(Charsets.UTF_8)
+            metaBuffer.put(sanitizedAuthor)
+            metaBuffer.position(192)
+
+            // publisher (32 bytes) - skip
+            metaBuffer.position(224)
+
+            // language (16 bytes) - skip
+            metaBuffer.position(240)
+
+            metaBuffer.putInt((System.currentTimeMillis() / 1000).toInt()) // createTime
+            metaBuffer.putShort(0) // coverPage
+            metaBuffer.putShort(chapters.size.toShort()) // chapterCount
+            metaBuffer.putLong(0L) // reserved
+
+            file.write(metaBuffer.array())
+
+            // Write chapters (empty for now)
+
+            // Write index table
+            var currentAbsoluteOffset = actualDataOffset.toLong()
+            for (pageSize in pageSizes) {
+                val entryBuffer = ByteBuffer.allocate(XTC_INDEX_ENTRY_SIZE)
+                entryBuffer.order(ByteOrder.LITTLE_ENDIAN)
+                entryBuffer.putLong(currentAbsoluteOffset)
+                entryBuffer.putInt(pageSize)
+                entryBuffer.putShort(PAGE_WIDTH.toShort())
+                entryBuffer.putShort(PAGE_HEIGHT.toShort())
+                file.write(entryBuffer.array())
+                currentAbsoluteOffset += pageSize
+            }
+
+            file.close()
+            raf = null
+        }
+
+        fun close() {
+            raf?.close()
+            raf = null
+        }
+    }
+
+    /**
      * Packs multiple XTG/XTH pages into an XTC file.
+     * @deprecated Use XtcStreamWriter for large files to avoid OOM
      */
     fun packXtc(title: String, author: String, pages: List<ByteArray>): ByteArray {
         if (pages.isEmpty()) {

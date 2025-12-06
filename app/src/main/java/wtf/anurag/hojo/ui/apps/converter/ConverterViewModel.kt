@@ -140,23 +140,17 @@ class ConverterViewModel @Inject constructor(
 
                 _status.value = ConverterStatus.Converting(0, 0)
 
-                val converter = NativeConverter()
-                val result =
-                    withContext(Dispatchers.Default) {
-                        converter.convert(inputStream, _settings.value) { current, total ->
-                            _status.value = ConverterStatus.Converting(current, total)
-                        }
-                    }
-
-                // Save result
+                // Create output file in cache directory
                 val originalName = getFileName(uri).substringBeforeLast(".")
                 val fileName = (originalName + ".xtc").replace(" ", "_")
-                val outputFile =
-                    withContext(Dispatchers.IO) {
-                        val file = File(getApplication<Application>().cacheDir, fileName)
-                        FileOutputStream(file).use { it.write(result) }
-                        file
+                val outputFile = File(getApplication<Application>().cacheDir, fileName)
+
+                val converter = NativeConverter()
+                withContext(Dispatchers.Default) {
+                    converter.convertToFile(inputStream, outputFile, _settings.value) { current, total ->
+                        _status.value = ConverterStatus.Converting(current, total)
                     }
+                }
 
                 _status.value = ConverterStatus.Preview(outputFile)
             } catch (e: Exception) {
