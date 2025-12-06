@@ -76,7 +76,7 @@ fun FileManagerApp(onBack: () -> Unit) {
                 onNavigate = { fileManagerViewModel.handleNavigate(it) },
                 onRename = { fileManagerViewModel.handleRename(it) },
                 onDelete = { fileManagerViewModel.handleDelete(it) },
-                onDownload = { /* TODO */},
+                onDownload = { fileManagerViewModel.handleDownload(it) },
                 errorMessage = errorMessage
         )
     }

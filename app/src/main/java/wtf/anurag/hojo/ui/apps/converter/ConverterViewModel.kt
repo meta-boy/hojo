@@ -198,9 +198,28 @@ class ConverterViewModel @Inject constructor(
 
     fun saveToDownloads(file: File) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-            _status.value = ConverterStatus.Error("Save to Downloads requires Android 10+")
+            android.widget.Toast.makeText(
+                getApplication(),
+                "Save to Downloads requires Android 10+",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
             return
         }
+
+        if (!file.exists()) {
+            android.widget.Toast.makeText(
+                getApplication(),
+                "File not found: ${file.name}",
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        android.widget.Toast.makeText(
+            getApplication(),
+            "Saving to Downloads...",
+            android.widget.Toast.LENGTH_SHORT
+        ).show()
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -233,13 +252,21 @@ class ConverterViewModel @Inject constructor(
                     }
                 } else {
                     withContext(Dispatchers.Main) {
-                        _status.value = ConverterStatus.Error("Failed to create file in Downloads")
+                        android.widget.Toast.makeText(
+                            getApplication(),
+                            "Failed to create file in Downloads",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
                     }
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
-                    _status.value = ConverterStatus.Error("Save failed: ${e.message}")
+                    android.widget.Toast.makeText(
+                        getApplication(),
+                        "Save failed: ${e.message}",
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
                 }
             }
         }

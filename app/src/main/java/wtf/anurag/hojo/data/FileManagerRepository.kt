@@ -106,6 +106,25 @@ class FileManagerRepository @Inject constructor(private val client: OkHttpClient
                 }
             }
 
+    suspend fun downloadFile(baseUrl: String, remotePath: String, destFile: File) =
+            withContext(Dispatchers.IO) {
+                // Build URL: baseUrl + path + ?download=true
+                val url = "$baseUrl$remotePath?download=true"
+                Log.d(TAG, "downloadFile -> GET $url")
+
+                val request = Request.Builder().url(url).build()
+
+                client.newCall(request).execute().use { response ->
+                    Log.d(TAG, "downloadFile -> response code: ${response.code}")
+                    if (!response.isSuccessful) throw IOException("Download failed: ${response.code}")
+                    response.body?.byteStream()?.use { input ->
+                        destFile.outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    } ?: throw IOException("Empty response body")
+                }
+            }
+
     suspend fun uploadFile(
             baseUrl: String,
             file: File,
