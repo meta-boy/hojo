@@ -19,9 +19,8 @@ android {
     defaultConfig {
         applicationId = "wtf.anurag.hojo"
         minSdk = 33
-        targetSdk = 34 // Example target SDK
         versionCode = 1
-        versionName = "1.0"
+        versionName = "0.0.11-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
