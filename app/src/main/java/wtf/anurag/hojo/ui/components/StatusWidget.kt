@@ -45,8 +45,6 @@ fun StatusWidget(
     storageStatus: StorageStatus?,
     onConnect: (Boolean) -> Unit
 ) {
-    val colors = HojoTheme.colors
-
     val usedPercentage =
         if (storageStatus != null && storageStatus.totalBytes > 0) {
             (storageStatus.usedBytes.toFloat() / storageStatus.totalBytes.toFloat())
@@ -57,7 +55,7 @@ fun StatusWidget(
     Card(
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer
         ),
         modifier = Modifier
@@ -204,7 +202,7 @@ fun StatusWidget(
             // Footer Info
             if (storageStatus?.version != null) {
                 Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+//                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
