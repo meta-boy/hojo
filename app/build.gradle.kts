@@ -20,7 +20,7 @@ android {
         applicationId = "wtf.anurag.hojo"
         minSdk = 33
         versionCode = 1
-        versionName = "0.0.11-beta"
+        versionName = "0.0.12-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
