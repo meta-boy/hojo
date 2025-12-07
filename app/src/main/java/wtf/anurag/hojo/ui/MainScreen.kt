@@ -35,6 +35,7 @@ import wtf.anurag.hojo.ui.apps.converter.XtcPreviewIntermediate
 import wtf.anurag.hojo.ui.apps.filemanager.FileManagerApp
 import wtf.anurag.hojo.ui.apps.quicklink.QuickLinkModal
 import wtf.anurag.hojo.ui.apps.settings.SettingsApp
+import wtf.anurag.hojo.ui.apps.tasks.TasksApp
 import wtf.anurag.hojo.ui.apps.wallpaper.WallpaperEditor
 import wtf.anurag.hojo.ui.components.AppDock
 import wtf.anurag.hojo.ui.components.ConnectivityBottomBar
@@ -228,6 +229,11 @@ fun MainScreen() {
                                                                                         .navigate(
                                                                                                 "wallpaper"
                                                                                         )
+                                                                        "Tasks" ->
+                                                                                navController
+                                                                                        .navigate(
+                                                                                                "tasks"
+                                                                                        )
                                                                         "Converter" ->
                                                                                 navController
                                                                                         .navigate(
@@ -401,6 +407,34 @@ fun MainScreen() {
                                         )
                                 }
                         ) { SettingsApp(onBack = { navController.popBackStack() }) }
+
+                        composable(
+                                "tasks",
+                                enterTransition = {
+                                        slideInHorizontally(
+                                                animationSpec = tween(300),
+                                                initialOffsetX = { it }
+                                        )
+                                },
+                                exitTransition = {
+                                        slideOutHorizontally(
+                                                animationSpec = tween(300),
+                                                targetOffsetX = { it }
+                                        )
+                                },
+                                popEnterTransition = {
+                                        slideInHorizontally(
+                                                animationSpec = tween(300),
+                                                initialOffsetX = { -it }
+                                        )
+                                },
+                                popExitTransition = {
+                                        slideOutHorizontally(
+                                                animationSpec = tween(300),
+                                                targetOffsetX = { it }
+                                        )
+                                }
+                        ) { TasksApp(onBack = { navController.popBackStack() }) }
                 }
         }
 }

@@ -17,6 +17,7 @@ imageCropper = "4.7.0"
 epublib = "3.1"
 hilt = "2.51.1"
 hiltNavCompose = "1.2.0"
+lifecycleService = "2.10.0"
 
 [libraries]
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
@@ -43,6 +44,7 @@ jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navCompose" }
 android-image-cropper = { group = "com.vanniktech", name = "android-image-cropper", version.ref = "imageCropper" }
 epublib = { group = "com.positiondev.epublib", name = "epublib-core", version.ref = "epublib" }
+androidx-lifecycle-service = { group = "androidx.lifecycle", name = "lifecycle-service", version.ref = "lifecycleService" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

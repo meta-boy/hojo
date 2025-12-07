@@ -36,6 +36,7 @@ class QuickLinkViewModel @Inject constructor(
     application: Application,
     private val repository: FileManagerRepository,
     private val connectivityRepository: ConnectivityRepository,
+    private val taskRepository: wtf.anurag.hojo.data.TaskRepository,
     private val okHttpClient: OkHttpClient
 ) : AndroidViewModel(application) {
 
@@ -250,21 +251,16 @@ class QuickLinkViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 _converting.value = true
-                val baseUrl = connectivityRepository.deviceBaseUrl.value
+                
+                // Queue the task
+                val targetPath = "/books/${file.name}"
+                taskRepository.addTask(android.net.Uri.fromFile(file), file.name, targetPath)
 
-                // Check books folder
-                val list = repository.fetchList(baseUrl, "/")
-                if (list.none { it.name == "books" && it.type == "dir" }) {
-                    repository.createFolder(baseUrl, "/books")
-                }
-
-                // Upload the generated XTC file using the repository API
-                repository.uploadFile(baseUrl, file, "/books/${file.name}")
-
+                // Close preview immediately
                 _previewFile.value = null
             } catch (e: Exception) {
                 e.printStackTrace()
-                _errorMessage.value = "Upload failed: ${e.message}"
+                _errorMessage.value = "Failed to queue upload: ${e.message}"
             } finally {
                 _converting.value = false
             }
