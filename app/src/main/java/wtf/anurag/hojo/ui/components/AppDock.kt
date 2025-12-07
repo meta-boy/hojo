@@ -18,14 +18,21 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,7 +48,11 @@ data class DockAction(
 )
 
 @Composable
-fun AppDock(onAction: (String) -> Unit) {
+fun AppDock(
+    onAction: (String) -> Unit,
+    isGridLayout: Boolean,
+    onToggleLayout: () -> Unit
+) {
         val colors = HojoTheme.colors
         val actions =
                 listOf(
@@ -79,15 +90,34 @@ fun AppDock(onAction: (String) -> Unit) {
                 )
 
         Column(modifier = Modifier.padding(top = 10.dp)) {
-                Text(
-                        text = "QUICK ACTIONS",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(bottom = 16.dp, start = 4.dp)
-                )
+                Row(
+                        modifier =
+                                Modifier.fillMaxWidth()
+                                        .padding(bottom = 16.dp, start = 4.dp, end = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                ) {
+                        Text(
+                                text = "QUICK ACTIONS",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelSmall
+                        )
+                        IconButton(
+                                onClick = onToggleLayout,
+                                modifier = Modifier.size(24.dp)
+                        ) {
+                                Icon(
+                                        imageVector =
+                                                if (isGridLayout) Icons.Default.List
+                                                else Icons.Default.GridView,
+                                        contentDescription = "Toggle Layout",
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                        }
+                }
 
                 LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
+                        columns = if (isGridLayout) GridCells.Fixed(2) else GridCells.Fixed(1),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -109,65 +139,157 @@ fun AppDock(onAction: (String) -> Unit) {
                                                         onAction(action.id)
                                                 }
                                 ) {
-                                        Column(
-                                                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                                                verticalArrangement = Arrangement.SpaceBetween,
-                                                horizontalAlignment = Alignment.Start
-                                        ) {
-                                                Box(
+                                        if (isGridLayout) {
+                                                Column(
                                                         modifier =
-                                                                Modifier.size(48.dp)
-                                                                        .clip(
-                                                                                MaterialTheme.shapes
-                                                                                        .medium
-                                                                        )
-                                                                        .background(
+                                                                Modifier.fillMaxWidth()
+                                                                        .padding(16.dp),
+                                                        verticalArrangement =
+                                                                Arrangement.SpaceBetween,
+                                                        horizontalAlignment = Alignment.Start
+                                                ) {
+                                                        Box(
+                                                                modifier =
+                                                                        Modifier.size(48.dp)
+                                                                                .clip(
+                                                                                        MaterialTheme
+                                                                                                .shapes
+                                                                                                .medium
+                                                                                )
+                                                                                .background(
+                                                                                        MaterialTheme
+                                                                                                .colorScheme
+                                                                                                .surface
+                                                                                                .copy(
+                                                                                                        alpha =
+                                                                                                                0.5f
+                                                                                                )
+                                                                                ),
+                                                                contentAlignment =
+                                                                        Alignment.Center
+                                                        ) {
+                                                                Icon(
+                                                                        imageVector =
+                                                                                action.icon,
+                                                                        contentDescription =
+                                                                                null,
+                                                                        tint =
                                                                                 MaterialTheme
                                                                                         .colorScheme
-                                                                                        .surface
-                                                                                        .copy(
-                                                                                                alpha =
-                                                                                                        0.5f
-                                                                                        )
-                                                                        ),
-                                                        contentAlignment = Alignment.Center
-                                                ) {
-                                                        Icon(
-                                                                imageVector = action.icon,
-                                                                contentDescription = null,
-                                                                tint =
+                                                                                        .onSecondaryContainer,
+                                                                        modifier =
+                                                                                Modifier.size(
+                                                                                        24.dp
+                                                                                )
+                                                                )
+                                                        }
+
+                                                        Spacer(
+                                                                modifier =
+                                                                        Modifier.height(32.dp)
+                                                        )
+
+                                                        Text(
+                                                                text = action.label,
+                                                                style =
+                                                                        MaterialTheme.typography
+                                                                                .titleMedium,
+                                                                color =
                                                                         MaterialTheme.colorScheme
                                                                                 .onSecondaryContainer,
-                                                                modifier = Modifier.size(24.dp)
+                                                                modifier =
+                                                                        Modifier.padding(
+                                                                                bottom = 4.dp
+                                                                        )
+                                                        )
+                                                        Text(
+                                                                text = action.subLabel,
+                                                                style =
+                                                                        MaterialTheme.typography
+                                                                                .bodySmall,
+                                                                color =
+                                                                        MaterialTheme.colorScheme
+                                                                                .onSecondaryContainer,
+                                                                minLines = 2,
+                                                                maxLines = 2
                                                         )
                                                 }
-
-                                                Spacer(modifier = Modifier.height(32.dp))
-
-                                                Text(
-                                                        text = action.label,
-                                                        style =
-                                                                MaterialTheme.typography
-                                                                        .titleMedium,
-                                                        color =
-                                                                MaterialTheme.colorScheme
-                                                                        .onSecondaryContainer,
+                                        } else {
+                                                Row(
                                                         modifier =
-                                                                Modifier.padding(
-                                                                        bottom = 4.dp
+                                                                Modifier.fillMaxWidth()
+                                                                        .padding(16.dp),
+                                                        verticalAlignment =
+                                                                Alignment.CenterVertically,
+                                                        horizontalArrangement =
+                                                                Arrangement.Start
+                                                ) {
+                                                        Box(
+                                                                modifier =
+                                                                        Modifier.size(48.dp)
+                                                                                .clip(
+                                                                                        MaterialTheme
+                                                                                                .shapes
+                                                                                                .medium
+                                                                                )
+                                                                                .background(
+                                                                                        MaterialTheme
+                                                                                                .colorScheme
+                                                                                                .surface
+                                                                                                .copy(
+                                                                                                        alpha =
+                                                                                                                0.5f
+                                                                                                )
+                                                                                ),
+                                                                contentAlignment =
+                                                                        Alignment.Center
+                                                        ) {
+                                                                Icon(
+                                                                        imageVector =
+                                                                                action.icon,
+                                                                        contentDescription =
+                                                                                null,
+                                                                        tint =
+                                                                                MaterialTheme
+                                                                                        .colorScheme
+                                                                                        .onSecondaryContainer,
+                                                                        modifier =
+                                                                                Modifier.size(
+                                                                                        24.dp
+                                                                                )
                                                                 )
-                                                )
-                                                Text(
-                                                        text = action.subLabel,
-                                                        style =
-                                                                MaterialTheme.typography
-                                                                        .bodySmall,
-                                                        color =
-                                                                MaterialTheme.colorScheme
-                                                                        .onSecondaryContainer,
-                                                        minLines = 2,
-                                                        maxLines = 2
-                                                )
+                                                        }
+
+                                                        Column(
+                                                                modifier =
+                                                                        Modifier.padding(
+                                                                                start = 16.dp
+                                                                        )
+                                                        ) {
+                                                                Text(
+                                                                        text = action.label,
+                                                                        style =
+                                                                                MaterialTheme
+                                                                                        .typography
+                                                                                        .titleMedium,
+                                                                        color =
+                                                                                MaterialTheme
+                                                                                        .colorScheme
+                                                                                        .onSecondaryContainer
+                                                                )
+                                                                Text(
+                                                                        text = action.subLabel,
+                                                                        style =
+                                                                                MaterialTheme
+                                                                                        .typography
+                                                                                        .bodySmall,
+                                                                        color =
+                                                                                MaterialTheme
+                                                                                        .colorScheme
+                                                                                        .onSecondaryContainer
+                                                                )
+                                                        }
+                                                }
                                         }
                                 }
                         }

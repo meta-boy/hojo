@@ -41,6 +41,7 @@ import wtf.anurag.hojo.ui.components.AppDock
 import wtf.anurag.hojo.ui.components.ConnectivityBottomBar
 import wtf.anurag.hojo.ui.components.StatusWidget
 import wtf.anurag.hojo.ui.viewmodels.ConnectivityViewModel
+import wtf.anurag.hojo.ui.viewmodels.MainViewModel
 import wtf.anurag.hojo.ui.viewmodels.QuickLinkViewModel
 
 @Composable
@@ -106,6 +107,9 @@ fun MainScreen() {
                         ) {
                                 val connectivityViewModel: ConnectivityViewModel = hiltViewModel()
                                 val quickLinkViewModel: QuickLinkViewModel = hiltViewModel()
+                                val mainViewModel: MainViewModel = hiltViewModel()
+
+                                val isGridLayout by mainViewModel.isGridLayout.collectAsState()
 
                                 // Guard API 29 properties/calls with runtime checks and fallbacks
                                 val isConnected by
@@ -212,6 +216,10 @@ fun MainScreen() {
                                                 Spacer(modifier = Modifier.height(24.dp))
 
                                                 AppDock(
+                                                        isGridLayout = isGridLayout,
+                                                        onToggleLayout = {
+                                                                mainViewModel.toggleLayout()
+                                                        },
                                                         onAction = { actionId ->
                                                                 when (actionId) {
                                                                         "File Manager" ->
