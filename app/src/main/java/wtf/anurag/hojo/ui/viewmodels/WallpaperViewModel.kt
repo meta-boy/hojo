@@ -38,8 +38,7 @@ val INK_SCREEN_PRESET =
 @HiltViewModel
 class WallpaperViewModel @Inject constructor(
     application: Application,
-    private val repository: FileManagerRepository,
-    private val connectivityManager: EpaperConnectivityManager
+    private val taskRepository: wtf.anurag.hojo.data.TaskRepository
 ) : AndroidViewModel(application) {
 
     private val _template = MutableStateFlow<String?>(null)
@@ -95,7 +94,6 @@ class WallpaperViewModel @Inject constructor(
 
     @RequiresApi(Build.VERSION_CODES.Q)
     fun saveAndUpload(onSuccess: () -> Unit) {
-        val baseUrl = connectivityManager.getDeviceBaseUrl()
         val bmp = _bitmap.value ?: return
         val currentFilters = _filters.value
 
@@ -196,9 +194,9 @@ class WallpaperViewModel @Inject constructor(
                         filteredBitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
                     }
 
-                    // Upload to e-paper device
+                    // Queue Upload
                     val targetPath = "/backgrounds/$filename"
-                    repository.uploadFile(baseUrl, tempFile, targetPath)
+                    taskRepository.addTask(Uri.fromFile(tempFile), filename, targetPath)
 
                     // Clean up
                     filteredBitmap.recycle()

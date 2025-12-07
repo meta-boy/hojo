@@ -45,8 +45,6 @@ fun StatusWidget(
     storageStatus: StorageStatus?,
     onConnect: (Boolean) -> Unit
 ) {
-    val colors = HojoTheme.colors
-
     val usedPercentage =
         if (storageStatus != null && storageStatus.totalBytes > 0) {
             (storageStatus.usedBytes.toFloat() / storageStatus.totalBytes.toFloat())
@@ -57,12 +55,12 @@ fun StatusWidget(
     Card(
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(20.dp)
+            .padding(4.dp)
     ) {
         Column(
             modifier = Modifier.padding(20.dp)
@@ -126,7 +124,7 @@ fun StatusWidget(
                     Text(
                         text = "Connection",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier.padding(bottom = 2.dp)
                     )
                     Text(
@@ -164,7 +162,7 @@ fun StatusWidget(
                     Icon(
                         imageVector = Icons.Default.Storage,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -176,14 +174,14 @@ fun StatusWidget(
                         Text(
                             text = "Storage",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                         Text(
                             text = if (storageStatus != null)
                                 "${FormatUtils.formatBytes(storageStatus.usedBytes)} / ${FormatUtils.formatBytes(storageStatus.totalBytes)}"
                             else "Unknown",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
 
@@ -204,7 +202,7 @@ fun StatusWidget(
             // Footer Info
             if (storageStatus?.version != null) {
                 Spacer(modifier = Modifier.height(16.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+//                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -213,7 +211,7 @@ fun StatusWidget(
                     Text(
                         text = "Firmware: ${storageStatus.version}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
                         modifier = Modifier.align(Alignment.TopEnd)
                     )
                 }

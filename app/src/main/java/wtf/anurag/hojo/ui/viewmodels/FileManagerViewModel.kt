@@ -11,25 +11,32 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.io.File
 import java.io.FileInputStream
-import java.io.FileOutputStream
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import wtf.anurag.hojo.data.ConnectivityRepository
 import wtf.anurag.hojo.data.FileManagerRepository
+import wtf.anurag.hojo.data.TaskRepository
 import wtf.anurag.hojo.data.model.FileItem
 import wtf.anurag.hojo.data.model.StorageStatus
+import wtf.anurag.hojo.data.model.TaskStatus
 import wtf.anurag.hojo.data.model.UploadProgress
-import javax.inject.Inject
 
 @HiltViewModel
-class FileManagerViewModel @Inject constructor(
-    application: Application,
-    private val repository: FileManagerRepository,
-    private val connectivityRepository: ConnectivityRepository
+class FileManagerViewModel
+@Inject
+constructor(
+        application: Application,
+        private val repository: FileManagerRepository,
+        private val connectivityRepository: ConnectivityRepository,
+        private val taskRepository: TaskRepository
 ) : AndroidViewModel(application) {
 
     private val _currentPath = MutableStateFlow("/")
@@ -49,8 +56,22 @@ class FileManagerViewModel @Inject constructor(
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     // Upload progress tracking
-    private val _uploadProgress = MutableStateFlow<UploadProgress?>(null)
-    val uploadProgress: StateFlow<UploadProgress?> = _uploadProgress.asStateFlow()
+    val uploadProgress: StateFlow<UploadProgress?> =
+            taskRepository
+                    .tasks
+                    .map { tasks ->
+                        val active = tasks.find { it.status == TaskStatus.UPLOADING }
+                        if (active != null) {
+                            UploadProgress(
+                                    totalBytes = active.totalBytes,
+                                    bytesUploaded = active.bytesTransferred,
+                                    transferSpeedBytesPerSecond = active.speedBytesPerSecond
+                            )
+                        } else {
+                            null
+                        }
+                    }
+                    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
     // Modal State
     private val _modalVisible = MutableStateFlow(false)
@@ -152,72 +173,16 @@ class FileManagerViewModel @Inject constructor(
     }
 
     fun handleUpload(uri: Uri, name: String) {
-        viewModelScope.launch {
-            _isLoading.value = true
-            _errorMessage.value = null
-            _uploadProgress.value = null
+        val targetPath = if (_currentPath.value == "/") "/$name" else "${_currentPath.value}/$name"
 
-            var startTime = 0L
-            var lastUpdateTime = 0L
-            var lastBytesWritten = 0L
+        taskRepository.addTask(uri, name, targetPath)
 
-            try {
-                val baseUrl = connectivityRepository.deviceBaseUrl.value
-                val targetPath =
-                        if (_currentPath.value == "/") "/$name" else "${_currentPath.value}/$name"
-
-                // Copy URI contents to a temp file in the app cache so repository can upload it
-                val app = getApplication<Application>()
-                val tempFile = File(app.cacheDir, name)
-                app.contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(tempFile).use { output -> input.copyTo(output) }
-                }
-                        ?: throw IllegalArgumentException("Unable to open URI: $uri")
-
-                repository.uploadFile(baseUrl, tempFile, targetPath) { bytesWritten, totalBytes ->
-                    val currentTime = System.currentTimeMillis()
-
-                    // Initialize start time on first callback
-                    if (startTime == 0L) {
-                        startTime = currentTime
-                        lastUpdateTime = currentTime
-                        lastBytesWritten = 0L
-                    }
-
-                    // Calculate transfer speed (update every 100ms to avoid too frequent updates)
-                    val timeSinceLastUpdate = currentTime - lastUpdateTime
-                    val transferSpeed =
-                            if (timeSinceLastUpdate > 100) {
-                                val bytesSinceLastUpdate = bytesWritten - lastBytesWritten
-                                val speedBytesPerSecond =
-                                        (bytesSinceLastUpdate * 1000) / timeSinceLastUpdate
-                                lastUpdateTime = currentTime
-                                lastBytesWritten = bytesWritten
-                                speedBytesPerSecond
-                            } else {
-                                _uploadProgress.value?.transferSpeedBytesPerSecond ?: 0L
-                            }
-
-                    _uploadProgress.value =
-                            UploadProgress(
-                                    bytesUploaded = bytesWritten,
-                                    totalBytes = totalBytes,
-                                    transferSpeedBytesPerSecond = transferSpeed
-                            )
-                }
-
-                loadFiles()
-                loadStatus()
-            } catch (e: Exception) {
-                e.printStackTrace()
-                _errorMessage.value = "Failed to upload file: ${e.message}"
-            } finally {
-                _isLoading.value = false
-                // Clear upload progress after a short delay
-                kotlinx.coroutines.delay(1000)
-                _uploadProgress.value = null
-            }
-        }
+        android.widget.Toast.makeText(
+                        getApplication(),
+                        "Upload queued in Tasks",
+                        android.widget.Toast.LENGTH_SHORT
+                )
+                .show()
     }
 
     fun handleModalSubmit() {
@@ -259,18 +224,20 @@ class FileManagerViewModel @Inject constructor(
     fun handleDownload(item: FileItem) {
         if (item.type == "dir") {
             android.widget.Toast.makeText(
-                getApplication(),
-                "Cannot download folders",
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
+                            getApplication(),
+                            "Cannot download folders",
+                            android.widget.Toast.LENGTH_SHORT
+                    )
+                    .show()
             return
         }
 
         android.widget.Toast.makeText(
-            getApplication(),
-            "Downloading ${item.name}...",
-            android.widget.Toast.LENGTH_SHORT
-        ).show()
+                        getApplication(),
+                        "Downloading ${item.name}...",
+                        android.widget.Toast.LENGTH_SHORT
+                )
+                .show()
 
         viewModelScope.launch {
             _isLoading.value = true
@@ -290,13 +257,24 @@ class FileManagerViewModel @Inject constructor(
                 // Save to Downloads using MediaStore (Android 10+)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     withContext(Dispatchers.IO) {
-                        val contentValues = ContentValues().apply {
-                            put(MediaStore.MediaColumns.DISPLAY_NAME, item.name)
-                            put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
-                            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-                        }
+                        val contentValues =
+                                ContentValues().apply {
+                                    put(MediaStore.MediaColumns.DISPLAY_NAME, item.name)
+                                    put(
+                                            MediaStore.MediaColumns.MIME_TYPE,
+                                            "application/octet-stream"
+                                    )
+                                    put(
+                                            MediaStore.MediaColumns.RELATIVE_PATH,
+                                            Environment.DIRECTORY_DOWNLOADS
+                                    )
+                                }
                         val resolver = app.contentResolver
-                        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                        val uri =
+                                resolver.insert(
+                                        MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                                        contentValues
+                                )
 
                         if (uri != null) {
                             resolver.openOutputStream(uri)?.use { output ->
@@ -304,10 +282,11 @@ class FileManagerViewModel @Inject constructor(
                             }
                             withContext(Dispatchers.Main) {
                                 android.widget.Toast.makeText(
-                                    app,
-                                    "Saved to Downloads",
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
+                                                app,
+                                                "Saved to Downloads",
+                                                android.widget.Toast.LENGTH_SHORT
+                                        )
+                                        .show()
                             }
                         } else {
                             throw Exception("Failed to create file in Downloads")
@@ -316,15 +295,19 @@ class FileManagerViewModel @Inject constructor(
                 } else {
                     // For older Android versions, save directly to Downloads folder
                     withContext(Dispatchers.IO) {
-                        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                        val downloadsDir =
+                                Environment.getExternalStoragePublicDirectory(
+                                        Environment.DIRECTORY_DOWNLOADS
+                                )
                         val destFile = File(downloadsDir, item.name)
                         tempFile.copyTo(destFile, overwrite = true)
                         withContext(Dispatchers.Main) {
                             android.widget.Toast.makeText(
-                                app,
-                                "Saved to Downloads",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
+                                            app,
+                                            "Saved to Downloads",
+                                            android.widget.Toast.LENGTH_SHORT
+                                    )
+                                    .show()
                         }
                     }
                 }
@@ -335,10 +318,11 @@ class FileManagerViewModel @Inject constructor(
                 e.printStackTrace()
                 withContext(Dispatchers.Main) {
                     android.widget.Toast.makeText(
-                        getApplication(),
-                        "Download failed: ${e.message}",
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
+                                    getApplication(),
+                                    "Download failed: ${e.message}",
+                                    android.widget.Toast.LENGTH_SHORT
+                            )
+                            .show()
                 }
             } finally {
                 _isLoading.value = false

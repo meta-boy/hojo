@@ -29,6 +29,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Dns
 import okhttp3.OkHttpClient
@@ -111,6 +114,13 @@ class EpaperConnectivityManager @Inject constructor(
 
     private val _lastResolvedIp = MutableStateFlow<String?>(null)
     val lastResolvedIp = _lastResolvedIp.asStateFlow()
+
+    // ========================
+    // Background Monitoring
+    // ========================
+
+    private var monitoringJob: Job? = null
+    private val monitoringScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     // ========================
     // Emulator Detection
@@ -443,6 +453,7 @@ class EpaperConnectivityManager @Inject constructor(
             Log.d(TAG, "scanForDevice -> found device at ${result.resolvedIp}")
             useLanEndpoint(result.resolvedIp)
             _isConnected.value = true
+            startMonitoring()
             return@withContext result.resolvedIp
         }
 
@@ -462,7 +473,9 @@ class EpaperConnectivityManager @Inject constructor(
             if (probeHttpReachability(discoveredIp)) {
                 Log.d(TAG, "connectToDiscoveredDevice -> device still reachable at $discoveredIp")
                 useLanEndpoint(discoveredIp)
+                useLanEndpoint(discoveredIp)
                 _isConnected.value = true
+                startMonitoring()
                 return@withContext true
             }
             Log.w(TAG, "connectToDiscoveredDevice -> device no longer reachable at $discoveredIp")
@@ -490,6 +503,7 @@ class EpaperConnectivityManager @Inject constructor(
                 Log.d(TAG, "connectToDevice -> device reachable at $discoveredIp")
                 useLanEndpoint(discoveredIp)
                 _isConnected.value = true
+                startMonitoring()
                 return@withContext true
             }
             Log.w(TAG, "connectToDevice -> previously discovered device no longer reachable")
@@ -507,6 +521,7 @@ class EpaperConnectivityManager @Inject constructor(
             Log.d(TAG, "connectToDevice -> discovered device at ${result.resolvedIp}")
             useLanEndpoint(result.resolvedIp)
             _isConnected.value = true
+            startMonitoring()
             return@withContext true
         }
 
@@ -582,6 +597,7 @@ class EpaperConnectivityManager @Inject constructor(
                         super.onAvailable(network)
                         epaperNetwork = network
                         _isConnected.value = true
+                        startMonitoring()
                         Log.d(TAG, "onAvailable: epaper network available: $network")
                         if (continuation.isActive) continuation.resume(true)
                     }
@@ -598,6 +614,7 @@ class EpaperConnectivityManager @Inject constructor(
                         if (epaperNetwork == network) {
                             epaperNetwork = null
                             _isConnected.value = false
+                            stopMonitoring()
                         }
                     }
                 }
@@ -1284,6 +1301,7 @@ class EpaperConnectivityManager @Inject constructor(
         networkCallback = null
         epaperNetwork = null
         _isConnected.value = false
+        stopMonitoring()
         stopDiscovery()
     }
 
@@ -1349,5 +1367,45 @@ class EpaperConnectivityManager @Inject constructor(
             Log.e(TAG, "Error getting network status", e)
             "Error"
         }
+    }
+
+    // ========================
+    // Monitoring Implementation
+    // ========================
+
+    private fun startMonitoring() {
+        stopMonitoring() // Cancel any existing job
+        Log.d(TAG, "Starting connectivity monitoring")
+        monitoringJob = monitoringScope.launch {
+            var consecutiveFailures = 0
+            while (isActive) {
+                delay(3000) // 3 seconds interval
+
+                if (pingEpaperStatus()) {
+                    consecutiveFailures = 0
+                } else {
+                    consecutiveFailures++
+                    Log.w(TAG, "Monitoring probe failed ($consecutiveFailures/3)")
+                }
+
+                if (consecutiveFailures >= 3) {
+                    Log.e(TAG, "Connection lost (3 consecutive failures). Triggering reconnection...")
+                    _isConnected.value = false
+                    stopMonitoring() // Stop this loop
+                    
+                    // Trigger reconnection
+                    connectToDevice()
+                    break
+                }
+            }
+        }
+    }
+
+    private fun stopMonitoring() {
+        if (monitoringJob?.isActive == true) {
+            Log.d(TAG, "Stopping connectivity monitoring")
+            monitoringJob?.cancel()
+        }
+        monitoringJob = null
     }
 }

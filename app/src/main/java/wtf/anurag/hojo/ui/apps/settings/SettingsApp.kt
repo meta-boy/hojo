@@ -52,7 +52,7 @@ fun SettingsApp(onBack: () -> Unit, viewModel: SettingsViewModel = hiltViewModel
     var showThemeDialog by remember { mutableStateOf(false) }
 
     val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-    val versionName = packageInfo.versionName
+    val versionName = packageInfo.versionName ?: ""
 
     if (showThemeDialog) {
         AlertDialog(

@@ -25,7 +25,8 @@ import javax.inject.Inject
 @HiltViewModel
 class ConverterViewModel @Inject constructor(
     application: Application,
-    private val repository: FileManagerRepository
+    private val repository: FileManagerRepository,
+    private val taskRepository: wtf.anurag.hojo.data.TaskRepository
 ) : AndroidViewModel(application) {
 
     private val _status = MutableStateFlow<ConverterStatus>(ConverterStatus.Idle)
@@ -174,14 +175,8 @@ class ConverterViewModel @Inject constructor(
                 val fileName = file.name
                 val targetPath = "/books/$fileName"
 
-                // Ensure /books directory exists
-                try {
-                    repository.createFolder(baseUrl, "/books")
-                } catch (_: Exception) {
-                    // Ignore if already exists or fails, try upload anyway
-                }
-
-                repository.uploadFile(baseUrl, file, targetPath) { _, _ -> }
+                // Queue upload
+                taskRepository.addTask(android.net.Uri.fromFile(file), fileName, targetPath)
 
                 _status.value = ConverterStatus.UploadSuccess
             } catch (e: Exception) {

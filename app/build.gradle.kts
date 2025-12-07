@@ -14,14 +14,13 @@ android {
     namespace = "wtf.anurag.hojo"
 
     // Use the maximum SDK version
-    compileSdk = 34 // Use a fixed, stable number or a version variable if defined
+    compileSdk = 35 // Use a fixed, stable number or a version variable if defined
 
     defaultConfig {
         applicationId = "wtf.anurag.hojo"
-        minSdk = 26
-        targetSdk = 34 // Example target SDK
+        minSdk = 33
         versionCode = 1
-        versionName = "0.0.10-beta"
+        versionName = "0.0.11-beta"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -51,6 +50,7 @@ dependencies {
     // Core Android and Kotlin KTX
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.service)
 
     // --- Jetpack Compose ---
 
@@ -82,9 +82,7 @@ dependencies {
         exclude(group = "xmlpull", module = "xmlpull")
         exclude(group = "net.sf.kxml", module = "kxml2")
     }
-    implementation("net.sf.kxml:kxml2:2.3.0") {
-        exclude(group = "xmlpull", module = "xmlpull")
-    }
+    implementation("net.sf.kxml:kxml2:2.3.0") { exclude(group = "xmlpull", module = "xmlpull") }
 
     // --- Testing Dependencies ---
     testImplementation(libs.junit)
@@ -100,19 +98,11 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
 }
 
-
 android {
-    packaging {
-        resources {
-            excludes += "org/xmlpull/v1/**"
-        }
-    }
-    configurations.all {
-        exclude(group = "xmlpull", module = "xmlpull")
-    }
+    packaging { resources { excludes += "org/xmlpull/v1/**" } }
+    configurations.all { exclude(group = "xmlpull", module = "xmlpull") }
 
-    // Force a compatible JavaPoet version to avoid runtime conflicts in annotation processors (Hilt)
-    configurations.all {
-        resolutionStrategy.force("com.squareup:javapoet:1.13.0")
-    }
+    // Force a compatible JavaPoet version to avoid runtime conflicts in annotation processors
+    // (Hilt)
+    configurations.all { resolutionStrategy.force("com.squareup:javapoet:1.13.0") }
 }
