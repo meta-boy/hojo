@@ -27,12 +27,12 @@ class NativeConverter {
         val title = book.metadata.titles.firstOrNull() ?: "Untitled"
         val author = book.metadata.authors.firstOrNull()?.toString() ?: "Unknown"
 
-        val writer = XtcEncoder.XtcStreamWriter(outputFile)
-        writer.start(title, author)
+        val writer = XtcEncoder.XtcStreamWriter(outputFile, metadata = XtcEncoder.XtcMetadata(title = title, author = author))
+        writer.start()
 
         try {
             val spineReferences = book.spine.spineReferences
-            val textPaint = XtcEncoder.createTextPaint(settings)
+            val textPaint = XtcRenderer.createTextPaint(settings)
 
             // Pass 1: Calculate total pages
             var totalBookPages = 0
@@ -46,9 +46,6 @@ class NativeConverter {
                     val doc = Jsoup.parse(htmlContent)
                     val bodyHtml = doc.body().html()
                     
-                    // Dummy ImageGetter for layout calculation (size matters, not content)
-                    // Actually, we need correct image sizes for layout.
-                    // Re-use logic or extract image getter creation.
                     val imageGetter = Html.ImageGetter { source ->
                         try {
                             var resolvedHref = URI(ref.resource.href).resolve(source).path
@@ -56,14 +53,14 @@ class NativeConverter {
                             val imageResource = book.resources.getByHref(resolvedHref) ?: book.resources.getByHref(source)
                             if (imageResource != null) {
                                 val availableWidth = 480 - (settings.margin * 2)
-                                return@ImageGetter XtcEncoder.createScaledDrawable(imageResource.data, availableWidth)
+                                return@ImageGetter XtcRenderer.createScaledDrawable(imageResource.data, availableWidth)
                             }
                         } catch (e: Exception) { e.printStackTrace() }
                         null
                     }
 
-                    val spanned = XtcEncoder.htmlToSpanned(bodyHtml, imageGetter, textPaint, settings)
-                    val breaks = XtcEncoder.calculatePageBreaks(spanned, textPaint, settings)
+                    val spanned = XtcRenderer.htmlToSpanned(bodyHtml, imageGetter, textPaint, settings)
+                    val breaks = XtcRenderer.calculatePageBreaks(spanned, textPaint, settings)
                     val chapterPages = breaks.size
                     
                     chapterPagesMap[ref.resource.href] = chapterPages
@@ -105,7 +102,7 @@ class NativeConverter {
                         if (imageResource != null) {
                             val bytes = imageResource.data
                             val availableWidth = 480 - (settings.margin * 2)
-                            return@ImageGetter XtcEncoder.createScaledDrawable(bytes, availableWidth)
+                            return@ImageGetter XtcRenderer.createScaledDrawable(bytes, availableWidth)
                         }
                     } catch (e: Exception) {
                         e.printStackTrace()
@@ -114,30 +111,42 @@ class NativeConverter {
                 }
 
                 // Convert HTML to Spanned
-                val spanned = XtcEncoder.htmlToSpanned(bodyHtml, imageGetter, textPaint, settings)
+                val spanned = XtcRenderer.htmlToSpanned(bodyHtml, imageGetter, textPaint, settings)
 
                 // Render pages for this chapter and write each page immediately
-                val pageInfo = XtcEncoder.PageInfo(currentGlobalPage, totalBookPages)
+                val pageInfo = XtcRenderer.PageInfo(currentGlobalPage, totalBookPages)
                 
-                val pages = XtcEncoder.renderPages(
+                XtcRenderer.renderPages(
                     spanned, 
                     textPaint, 
                     settings, 
-                    { _, _ -> }, // Progress handled below
-                    settings.colorMode,
                     title,
                     pageInfo
-                )
+                ) { bitmap ->
+                    // Encode and write
+                    val config = XtcEncoder.EncoderConfig(
+                        width = bitmap.width,
+                        height = bitmap.height,
+                        enableDithering = settings.enableDithering,
+                        ditherStrength = settings.ditherStrength / 100f
+                    )
 
-                // Write pages to file immediately to free memory
-                for (page in pages) {
-                    writer.writePage(page)
+                    val frame = if (settings.colorMode == ConverterSettings.ColorMode.MONOCHROME) {
+                        XtcEncoder.encodeXtg(bitmap, config)
+                    } else {
+                        XtcEncoder.encodeXth(bitmap, config)
+                    }
+
+                    writer.writePage(frame)
+                    bitmap.recycle()
+
                     onProgress(currentGlobalPage, totalBookPages)
                     currentGlobalPage++
                 }
             }
 
-            writer.finish(title, author)
+            writer.finish()
+            
         } catch (e: Exception) {
             writer.close()
             outputFile.delete()

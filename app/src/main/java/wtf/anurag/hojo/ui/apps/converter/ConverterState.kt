@@ -9,8 +9,13 @@ data class ConverterSettings(
         val enableDithering: Boolean = true,
         val ditherStrength: Int = 70,
         val fontFamily: String = "",
-        val colorMode: XtcEncoder.ColorMode = XtcEncoder.ColorMode.GRAYSCALE_4
-)
+        val colorMode: ColorMode = ColorMode.GRAYSCALE_4
+) {
+    enum class ColorMode {
+        MONOCHROME,
+        GRAYSCALE_4
+    }
+}
 
 sealed class ConverterStatus {
     object Idle : ConverterStatus()

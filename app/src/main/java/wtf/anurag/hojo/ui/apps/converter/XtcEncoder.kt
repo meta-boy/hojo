@@ -1,639 +1,397 @@
 package wtf.anurag.hojo.ui.apps.converter
 
-import android.content.res.Resources
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Typeface
-import android.graphics.drawable.BitmapDrawable
-import android.graphics.drawable.Drawable
-import android.text.Html
-import android.text.Layout
-import android.text.SpannableStringBuilder
-import android.text.Spanned
-import android.text.StaticLayout
-import android.text.TextPaint
-import android.text.style.MetricAffectingSpan
 import java.io.File
-import java.io.FileOutputStream
 import java.io.RandomAccessFile
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.ceil
 
 /**
- * Shared utilities for converting content to XTC format for e-paper display.
- * Used by both NativeConverter (EPUB) and HtmlConverter (HTML).
+ * XTC/XTH/XTG Encoder for ESP32 E-Paper Displays.
  *
- * Implements XTC/XTG/XTH format specification v1.0 for ESP32 E-Paper Display Devices.
+ * Implements the XTC format specification for converting images to e-paper display formats:
+ * - XTG: 1-bit monochrome (row-major, MSB first)
+ * - XTH: 2-bit 4-level grayscale (vertical bitplanes, column-major right-to-left)
+ * - XTC: Multi-page container with metadata
  *
- * Supports:
- * - XTG: 1-bit monochrome (for high-contrast content)
- * - XTH: 2-bit 4-level grayscale (for antialiased fonts)
+ * Based on the xtctool Python implementation.
  */
 object XtcEncoder {
 
-    private const val PAGE_WIDTH = 480
-    private const val PAGE_HEIGHT = 800
-    private const val FONT_SCALE_FACTOR = 1.4f // 140% font scaling
-    private const val FOOTER_HEIGHT = 40
-    private const val FOOTER_PADDING = 8
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Constants
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // Magic numbers (little-endian)
+    private const val MAGIC_XTC = 0x00435458  // "XTC\0"
+    private const val MAGIC_XTH = 0x00485458  // "XTH\0"
+    private const val MAGIC_XTG = 0x00475458  // "XTG\0"
 
     // Header sizes
-    private const val XTG_HEADER_SIZE = 22
-    private const val XTH_HEADER_SIZE = 22
-
-    // XTC structure sizes (per spec)
-    private const val XTC_HEADER_SIZE = 56
+    private const val XTC_HEADER_SIZE = 48
     private const val XTC_METADATA_SIZE = 256
-    private const val XTC_CHAPTER_ENTRY_SIZE = 96
+    private const val XTC_CHAPTER_SIZE = 96
     private const val XTC_INDEX_ENTRY_SIZE = 16
+    private const val XTH_HEADER_SIZE = 22
+    private const val XTG_HEADER_SIZE = 22
+
+    // XTC Version
+    private const val XTC_VERSION: Short = 0x0100
+
+    // Reading directions
+    const val DIRECTION_LTR = 0  // Left to Right
+    const val DIRECTION_RTL = 1  // Right to Left
+    const val DIRECTION_TTB = 2  // Top to Bottom
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Data Classes
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Color mode for encoding.
+     * XTC file metadata.
      */
-    enum class ColorMode {
-        MONOCHROME,  // 1-bit XTG
-        GRAYSCALE_4  // 2-bit XTH (4 levels)
-    }
-
-    /**
-     * Creates a TextPaint configured for e-paper rendering.
-     */
-    fun createTextPaint(settings: ConverterSettings): TextPaint {
-        return TextPaint().apply {
-            isAntiAlias = true
-            textSize = 16f * (settings.fontSize / 100f) * FONT_SCALE_FACTOR
-            color = Color.BLACK
-            if (settings.fontFamily.isNotEmpty()) {
-                try {
-                    typeface = Typeface.createFromFile(settings.fontFamily)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
-            }
-        }
-    }
-
-    /**
-     * Converts HTML body content to a Spanned object with proper styling.
-     */
-    fun htmlToSpanned(
-        bodyHtml: String,
-        imageGetter: Html.ImageGetter,
-        textPaint: TextPaint,
-        settings: ConverterSettings
-    ): Spanned {
-        val spanned = Html.fromHtml(bodyHtml, Html.FROM_HTML_MODE_COMPACT, imageGetter, null)
-
-        return if (textPaint.typeface != null && settings.fontFamily.isNotEmpty()) {
-            val ssb = SpannableStringBuilder(spanned)
-            ssb.setSpan(
-                CustomTypefaceSpan(textPaint.typeface),
-                0,
-                ssb.length,
-                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
-            )
-            ssb
-        } else {
-            spanned
-        }
-    }
-
-    /**
-     * Data class to hold pagination info for footer rendering.
-     */
-    data class PageInfo(
-        val globalCurrentPage: Int,
-        val globalTotalPages: Int
+    data class XtcMetadata(
+        val title: String = "",
+        val author: String = "",
+        val publisher: String = "",
+        val language: String = "en-US",
+        val createTime: Long = System.currentTimeMillis() / 1000,
+        val coverPage: Int = 0xFFFF,  // 0xFFFF = no cover
     )
 
     /**
-     * Calculates page breaks for the content.
-     * Returns a list of Y-offsets for each page start.
+     * Chapter information for XTC container.
      */
-    fun calculatePageBreaks(
-        spanned: Spanned,
-        textPaint: TextPaint,
-        settings: ConverterSettings
-    ): List<Int> {
-        val width = PAGE_WIDTH - (settings.margin * 2)
-        val layout = StaticLayout.Builder.obtain(
-            spanned,
-            0,
-            spanned.length,
-            textPaint,
-            width
-        )
-            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-            .setLineSpacing(0f, settings.lineHeight)
-            .setIncludePad(true)
-            .build()
-
-        // Reserve space for footer
-        val contentHeight = PAGE_HEIGHT - (settings.margin * 2) - FOOTER_HEIGHT
-
-        val breaks = mutableListOf<Int>()
-        var yOffset = 0
-        breaks.add(0) // First page starts at 0
-
-        while (yOffset < layout.height) {
-            val proposedBottom = yOffset + contentHeight
-            var nextOffset = proposedBottom
-
-            if (proposedBottom < layout.height) {
-                val lineIndex = layout.getLineForVertical(proposedBottom)
-                val lineTop = layout.getLineTop(lineIndex)
-
-                if (lineTop < proposedBottom && lineTop > yOffset) {
-                    nextOffset = lineTop
-                }
-            }
-
-            if (nextOffset < layout.height) {
-                breaks.add(nextOffset)
-            }
-            yOffset = nextOffset
-        }
-
-        return breaks
-    }
+    data class XtcChapter(
+        val name: String,
+        val startPage: Int,  // 0-based
+        val endPage: Int,    // 0-based, inclusive
+    )
 
     /**
-     * Renders spanned content into encoded pages (XTG or XTH based on colorMode).
-     * @param title Book title for footer
-     * @param pageInfo Pagination info (optional). If provided, footer is drawn.
+     * Configuration for image encoding.
      */
-    fun renderPages(
-        spanned: Spanned,
-        textPaint: TextPaint,
-        settings: ConverterSettings,
-        onProgress: (current: Int, total: Int) -> Unit,
-        colorMode: ColorMode = ColorMode.GRAYSCALE_4,
-        title: String? = null,
-        pageInfo: PageInfo? = null
-    ): List<ByteArray> {
-        val pages = mutableListOf<ByteArray>()
+    data class EncoderConfig(
+        val width: Int = 480,
+        val height: Int = 800,
+        val enableDithering: Boolean = true,
+        val ditherStrength: Float = 0.8f,
+        // XTH specific
+        val xthThreshold1: Int = 85,
+        val xthThreshold2: Int = 170,
+        val xthThreshold3: Int = 255,
+        val xthInvert: Boolean = false,
+        // XTG specific
+        val xtgThreshold: Int = 128,
+        val xtgInvert: Boolean = false,
+    )
 
-        val width = PAGE_WIDTH - (settings.margin * 2)
-        val layout = StaticLayout.Builder.obtain(
-            spanned,
-            0,
-            spanned.length,
-            textPaint,
-            width
-        )
-            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
-            .setLineSpacing(0f, settings.lineHeight)
-            .setIncludePad(true)
-            .build()
-
-        // Reserve space for footer
-        val contentHeight = PAGE_HEIGHT - (settings.margin * 2) - FOOTER_HEIGHT
-
-        // Get page breaks (reusing logic would be better but for now inline to keep layout object)
-        // Actually, we can just iterate using the same logic as calculatePageBreaks
-        // or we can assume calculatePageBreaks was called before for total count?
-        // Let's implement the loop here to perform drawing.
-
-        var yOffset = 0
-        var localPageCount = 0
-
-        while (yOffset < layout.height) {
-            val proposedBottom = yOffset + contentHeight
-            var nextOffset = proposedBottom
-
-            if (proposedBottom < layout.height) {
-                val lineIndex = layout.getLineForVertical(proposedBottom)
-                val lineTop = layout.getLineTop(lineIndex)
-
-                if (lineTop < proposedBottom && lineTop > yOffset) {
-                    nextOffset = lineTop
-                }
-            }
-
-            val bitmap = Bitmap.createBitmap(PAGE_WIDTH, PAGE_HEIGHT, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(bitmap)
-            canvas.drawColor(Color.WHITE)
-
-            // Draw content
-            canvas.save()
-            canvas.clipRect(
-                0,
-                0,
-                PAGE_WIDTH,
-                PAGE_HEIGHT - FOOTER_HEIGHT // Clip to exclude footer area from content
-            )
-            canvas.translate(
-                settings.margin.toFloat(),
-                settings.margin.toFloat() - yOffset.toFloat()
-            )
-            layout.draw(canvas)
-            canvas.restore()
-
-            // Draw Footer if info is available
-            if (title != null && pageInfo != null) {
-                val currentGlobal = pageInfo.globalCurrentPage + localPageCount
-                drawFooter(canvas, title, currentGlobal, pageInfo.globalTotalPages, settings)
-            }
-
-            // Encode based on color mode
-            val pageData = when (colorMode) {
-                ColorMode.MONOCHROME -> {
-                    if (settings.enableDithering) {
-                        floydSteinbergDither(bitmap, settings.ditherStrength)
-                    } else {
-                        threshold(bitmap)
-                    }
-                    encodeXtg(bitmap)
-                }
-                ColorMode.GRAYSCALE_4 -> {
-                    if (settings.enableDithering) {
-                        floydSteinbergDither4Level(bitmap, settings.ditherStrength)
-                    } else {
-                        quantizeTo4Levels(bitmap)
-                    }
-                    encodeXth(bitmap)
-                }
-            }
-
-            pages.add(pageData)
-            bitmap.recycle()
-
-            yOffset = nextOffset
-            localPageCount++
-            onProgress(localPageCount, -1)
-        }
-
-        return pages
-    }
-
-    private fun drawFooter(
-        canvas: Canvas,
-        title: String,
-        currentPage: Int,
-        totalPages: Int,
-        settings: ConverterSettings
+    /**
+     * Encoded frame data with format info.
+     */
+    data class EncodedFrame(
+        val data: ByteArray,
+        val format: FrameFormat,
+        val width: Int,
+        val height: Int,
     ) {
-        val footerPaint = TextPaint().apply {
-            isAntiAlias = true
-            textSize = 12f * FONT_SCALE_FACTOR
-            color = Color.BLACK
-            typeface = Typeface.DEFAULT_BOLD
+        override fun equals(other: Any?): Boolean {
+            if (this === other) return true
+            if (other !is EncodedFrame) return false
+            return data.contentEquals(other.data) && format == other.format &&
+                    width == other.width && height == other.height
         }
 
-        val footerY = (PAGE_HEIGHT - FOOTER_PADDING).toFloat()
-        val margin = settings.margin.toFloat()
-
-        // 1. Progress % (Left)
-        val progress = if (totalPages > 0) (currentPage.toFloat() / totalPages * 100).toInt() else 0
-        val batteryIcon = "\uD83D\uDD0B" // Battery symbol approximation or use icon if available.
-        // Actually user image shows a battery icon but unicode might fail on simple paint.
-        // Let's just use text "progress%" for now or similar to screenshot.
-        // Screenshot shows: [Icon] 100%
-        val progressText = "$progress%" 
-        // Note: For now using text only. If icon needed, would need resource/path drawing.
-        canvas.drawText(progressText, margin, footerY, footerPaint)
-
-        // 2. Title (Center)
-        // Ellipsize title if too long
-        val availableWidth = PAGE_WIDTH - (margin * 2)
-        val maxTitleWidth = availableWidth * 0.5f // 50% for title
-        val titleText = android.text.TextUtils.ellipsize(
-            title.uppercase(),
-            footerPaint,
-            maxTitleWidth,
-            android.text.TextUtils.TruncateAt.END
-        ).toString()
-        
-        val titleWidth = footerPaint.measureText(titleText)
-        val titleX = (PAGE_WIDTH - titleWidth) / 2
-        canvas.drawText(titleText, titleX, footerY, footerPaint)
-
-        // 3. Page Number (Right)
-        val pageText = "$currentPage"
-        val pageWidth = footerPaint.measureText(pageText)
-        val pageX = PAGE_WIDTH - margin - pageWidth
-        canvas.drawText(pageText, pageX, footerY, footerPaint)
+        override fun hashCode(): Int {
+            var result = data.contentHashCode()
+            result = 31 * result + format.hashCode()
+            result = 31 * result + width
+            result = 31 * result + height
+            return result
+        }
     }
 
-    /**
-     * Renders spanned content into encoded pages (XTG or XTH based on colorMode).
-     */
-
-
-    /**
-     * Simple threshold dithering - converts to pure black/white.
-     */
-    fun threshold(bitmap: Bitmap) {
-        val width = bitmap.width
-        val height = bitmap.height
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-
-        for (i in pixels.indices) {
-            val color = pixels[i]
-            val r = (color shr 16) and 0xFF
-            val g = (color shr 8) and 0xFF
-            val b = color and 0xFF
-            val gray = (0.299 * r + 0.587 * g + 0.114 * b).toInt()
-            pixels[i] = if (gray < 128) Color.BLACK else Color.WHITE
-        }
-        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+    enum class FrameFormat {
+        XTH,  // 4-level grayscale
+        XTG,  // 1-bit monochrome
     }
 
-    /**
-     * Quantizes bitmap to 4 grayscale levels without dithering.
-     * Maps to XTH LUT levels: 0=White, 1=DarkGrey, 2=LightGrey, 3=Black
-     */
-    fun quantizeTo4Levels(bitmap: Bitmap) {
-        val width = bitmap.width
-        val height = bitmap.height
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-
-        for (i in pixels.indices) {
-            val color = pixels[i]
-            val r = (color shr 16) and 0xFF
-            val g = (color shr 8) and 0xFF
-            val b = color and 0xFF
-            val gray = (0.299 * r + 0.587 * g + 0.114 * b).toInt()
-
-            // Quantize to 4 levels (0, 85, 170, 255)
-            val quantized = when {
-                gray < 64 -> 0      // Black
-                gray < 128 -> 85    // Dark grey
-                gray < 192 -> 170   // Light grey
-                else -> 255         // White
-            }
-            pixels[i] = Color.rgb(quantized, quantized, quantized)
-        }
-        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
-    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Public API - Image Encoding
+    // ═══════════════════════════════════════════════════════════════════════════
 
     /**
-     * Floyd-Steinberg dithering for 1-bit output.
+     * Encode a bitmap to XTH format (4-level grayscale).
      */
-    fun floydSteinbergDither(bitmap: Bitmap, strength: Int) {
-        val width = bitmap.width
-        val height = bitmap.height
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+    fun encodeXth(
+        bitmap: Bitmap,
+        config: EncoderConfig = EncoderConfig()
+    ): EncodedFrame {
+        // Resize if needed
+        val resized = resizeBitmap(bitmap, config.width, config.height)
 
-        val factor = strength / 100f
-        val gray = FloatArray(width * height)
+        // Convert to grayscale array
+        val grayArray = bitmapToGrayscale(resized)
 
-        for (i in pixels.indices) {
-            val color = pixels[i]
-            val r = (color shr 16) and 0xFF
-            val g = (color shr 8) and 0xFF
-            val b = color and 0xFF
-            gray[i] = (0.299f * r + 0.587f * g + 0.114f * b)
+        // Apply invert if requested (to source before quantization)
+        val processedArray = if (config.xthInvert) {
+            FloatArray(grayArray.size) { 255f - grayArray[it] }
+        } else {
+            grayArray
         }
 
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val idx = y * width + x
-                val oldPixel = gray[idx]
-                val newPixel = if (oldPixel < 128) 0f else 255f
-
-                gray[idx] = newPixel
-                val error = (oldPixel - newPixel) * factor
-
-                if (x < width - 1) gray[idx + 1] += error * 7 / 16
-                if (y < height - 1) {
-                    if (x > 0) gray[idx + width - 1] += error * 3 / 16
-                    gray[idx + width] += error * 5 / 16
-                    if (x < width - 1) gray[idx + width + 1] += error * 1 / 16
-                }
-            }
+        // Quantize to 4 levels (with or without dithering)
+        val quantized = if (config.enableDithering) {
+            floydSteinbergDither4Level(
+                processedArray,
+                config.width,
+                config.height,
+                config.xthThreshold1.toFloat(),
+                config.xthThreshold2.toFloat(),
+                config.xthThreshold3.toFloat(),
+                config.ditherStrength
+            )
+        } else {
+            quantize4Level(
+                processedArray,
+                config.width,
+                config.height,
+                config.xthThreshold1,
+                config.xthThreshold2,
+                config.xthThreshold3
+            )
         }
 
-        for (i in pixels.indices) {
-            val valGray = gray[i].toInt().coerceIn(0, 255)
-            pixels[i] = Color.rgb(valGray, valGray, valGray)
-        }
+        // Encode to bitplanes
+        val (plane1, plane2) = encodeXthBitplanes(quantized, config.width, config.height)
 
-        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
-    }
-
-    /**
-     * Floyd-Steinberg dithering for 4-level grayscale output.
-     * Quantizes to 4 levels while diffusing error for smoother gradients.
-     */
-    fun floydSteinbergDither4Level(bitmap: Bitmap, strength: Int) {
-        val width = bitmap.width
-        val height = bitmap.height
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-
-        val factor = strength / 100f
-        val gray = FloatArray(width * height)
-
-        // Convert to grayscale
-        for (i in pixels.indices) {
-            val color = pixels[i]
-            val r = (color shr 16) and 0xFF
-            val g = (color shr 8) and 0xFF
-            val b = color and 0xFF
-            gray[i] = (0.299f * r + 0.587f * g + 0.114f * b)
-        }
-
-        // 4-level quantization values
-        val levels = floatArrayOf(0f, 85f, 170f, 255f)
-
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val idx = y * width + x
-                val oldPixel = gray[idx].coerceIn(0f, 255f)
-
-                // Find nearest level
-                val newPixel = levels.minByOrNull { kotlin.math.abs(it - oldPixel) } ?: 0f
-
-                gray[idx] = newPixel
-                val error = (oldPixel - newPixel) * factor
-
-                // Diffuse error to neighbors
-                if (x < width - 1) gray[idx + 1] += error * 7 / 16
-                if (y < height - 1) {
-                    if (x > 0) gray[idx + width - 1] += error * 3 / 16
-                    gray[idx + width] += error * 5 / 16
-                    if (x < width - 1) gray[idx + width + 1] += error * 1 / 16
-                }
-            }
-        }
-
-        for (i in pixels.indices) {
-            val valGray = gray[i].toInt().coerceIn(0, 255)
-            pixels[i] = Color.rgb(valGray, valGray, valGray)
-        }
-
-        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
-    }
-
-    /**
-     * Encodes a bitmap to XTG format (1-bit monochrome).
-     *
-     * XTG Format (per spec):
-     * - Header: 22 bytes
-     * - Data: 1 bit per pixel, MSB first, row-major order
-     * - Pixel values: 0=Black, 1=White
-     */
-    fun encodeXtg(bitmap: Bitmap): ByteArray {
-        val width = bitmap.width
-        val height = bitmap.height
-        val bytesPerRow = ceil(width / 8.0).toInt()
-        val dataSize = bytesPerRow * height
-
-        val buffer = ByteBuffer.allocate(XTG_HEADER_SIZE + dataSize)
-        buffer.order(ByteOrder.LITTLE_ENDIAN)
-
-        // Header (22 bytes)
-        buffer.put(0x58.toByte()) // X
-        buffer.put(0x54.toByte()) // T
-        buffer.put(0x47.toByte()) // G
-        buffer.put(0x00.toByte())
-        buffer.putShort(width.toShort())
-        buffer.putShort(height.toShort())
-        buffer.put(0.toByte()) // colorMode = monochrome
-        buffer.put(0.toByte()) // compression = none
-        buffer.putInt(dataSize)
-        buffer.putLong(0L) // md5 (optional)
-
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-
-        val dataArray = ByteArray(dataSize)
-
-        // Row-major, MSB first, 0=Black, 1=White
-        for (y in 0 until height) {
-            for (x in 0 until width) {
-                val pixel = pixels[y * width + x]
-                val isWhite = (pixel and 0xFF) > 128
-
-                if (isWhite) {
-                    val byteIdx = y * bytesPerRow + (x / 8)
-                    val bitIdx = 7 - (x % 8)
-                    dataArray[byteIdx] = (dataArray[byteIdx].toInt() or (1 shl bitIdx)).toByte()
-                }
-            }
-        }
-
-        buffer.put(dataArray)
-        return buffer.array()
-    }
-
-    /**
-     * Encodes a bitmap to XTH format (2-bit 4-level grayscale).
-     *
-     * XTH Format (per spec):
-     * - Header: 22 bytes
-     * - Data: Two bit planes, vertical scan order (column-major, right to left)
-     * - LUT mapping (IMPORTANT - values 1 and 2 are swapped!):
-     *   - 0 (00): White
-     *   - 1 (01): Dark Grey
-     *   - 2 (10): Light Grey
-     *   - 3 (11): Black
-     *
-     * Bit planes:
-     * - Bit1 (first plane): sent via command 0x24
-     * - Bit2 (second plane): sent via command 0x26
-     * - Pixel value = (bit1 << 1) | bit2
-     */
-    fun encodeXth(bitmap: Bitmap): ByteArray {
-        val width = bitmap.width
-        val height = bitmap.height
-
-        // Each column has height pixels, packed 8 per byte
-        val bytesPerColumn = (height + 7) / 8
-        val planeSize = width * bytesPerColumn
-        val dataSize = planeSize * 2  // Two bit planes
+        // Build XTH file
+        val dataSize = plane1.size + plane2.size
+        val checksum = plane1.sum() + plane2.sum()
 
         val buffer = ByteBuffer.allocate(XTH_HEADER_SIZE + dataSize)
         buffer.order(ByteOrder.LITTLE_ENDIAN)
 
         // Header (22 bytes)
-        buffer.put(0x58.toByte()) // X
-        buffer.put(0x54.toByte()) // T
-        buffer.put(0x48.toByte()) // H
-        buffer.put(0x00.toByte())
-        buffer.putShort(width.toShort())
-        buffer.putShort(height.toShort())
-        buffer.put(0.toByte()) // colorMode
-        buffer.put(0.toByte()) // compression = none
+        buffer.putInt(MAGIC_XTH)
+        buffer.putShort(config.width.toShort())
+        buffer.putShort(config.height.toShort())
+        buffer.put(0)  // colorMode
+        buffer.put(0)  // compression
         buffer.putInt(dataSize)
-        buffer.putLong(0L) // md5 (optional)
+        buffer.putLong(checksum and 0xFFFFFFFFFFFFFFFL)  // checksum
 
-        val pixels = IntArray(width * height)
-        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-
-        val plane1 = ByteArray(planeSize)  // Bit1 plane
-        val plane2 = ByteArray(planeSize)  // Bit2 plane
-
-        // Convert grayscale to 4-level pixel values with swapped LUT mapping
-        // Input gray -> XTH pixel value
-        // 255 (white)      -> 0 (00)
-        // 170 (light grey) -> 2 (10) - NOTE: swapped!
-        // 85  (dark grey)  -> 1 (01) - NOTE: swapped!
-        // 0   (black)      -> 3 (11)
-        fun grayToPixelValue(gray: Int): Int {
-            return when {
-                gray > 212 -> 0  // White
-                gray > 127 -> 2  // Light grey (LUT level 2)
-                gray > 42 -> 1   // Dark grey (LUT level 1)
-                else -> 3        // Black
-            }
-        }
-
-        // Vertical scan order: columns right to left, 8 vertical pixels per byte
-        var byteIndex = 0
-        for (x in (width - 1) downTo 0) {  // Right to left
-            for (yGroup in 0 until bytesPerColumn) {
-                var byte1 = 0
-                var byte2 = 0
-
-                for (bitPos in 0 until 8) {
-                    val y = yGroup * 8 + bitPos
-                    if (y < height) {
-                        val pixel = pixels[y * width + x]
-                        val gray = pixel and 0xFF
-                        val pixelValue = grayToPixelValue(gray)
-
-                        // pixelValue = (bit1 << 1) | bit2
-                        val bit1 = (pixelValue shr 1) and 1
-                        val bit2 = pixelValue and 1
-
-                        // MSB = topmost pixel in group (bit 7 = first pixel)
-                        val shift = 7 - bitPos
-                        byte1 = byte1 or (bit1 shl shift)
-                        byte2 = byte2 or (bit2 shl shift)
-                    }
-                }
-
-                plane1[byteIndex] = byte1.toByte()
-                plane2[byteIndex] = byte2.toByte()
-                byteIndex++
-            }
-        }
-
+        // Data
         buffer.put(plane1)
         buffer.put(plane2)
+
+        if (resized != bitmap) resized.recycle()
+
+        return EncodedFrame(buffer.array(), FrameFormat.XTH, config.width, config.height)
+    }
+
+    /**
+     * Encode a bitmap to XTG format (1-bit monochrome).
+     */
+    fun encodeXtg(
+        bitmap: Bitmap,
+        config: EncoderConfig = EncoderConfig()
+    ): EncodedFrame {
+        // Resize if needed
+        val resized = resizeBitmap(bitmap, config.width, config.height)
+
+        // Convert to grayscale array
+        val grayArray = bitmapToGrayscale(resized)
+
+        // Quantize to 2 levels (with or without dithering)
+        val quantized = if (config.enableDithering) {
+            floydSteinbergDither2Level(
+                grayArray,
+                config.width,
+                config.height,
+                config.xtgThreshold.toFloat(),
+                config.ditherStrength
+            )
+        } else {
+            quantize2Level(grayArray, config.width, config.height, config.xtgThreshold)
+        }
+
+        // Apply invert if requested
+        val finalQuantized = if (config.xtgInvert) {
+            ByteArray(quantized.size) { (1 - quantized[it]).toByte() }
+        } else {
+            quantized
+        }
+
+        // Encode to bitmap
+        val bitmapData = encodeXtgBitmap(finalQuantized, config.width, config.height)
+
+        // Build XTG file
+        val dataSize = bitmapData.size
+        val checksum = bitmapData.sumOf { it.toInt() and 0xFF }
+
+        val buffer = ByteBuffer.allocate(XTG_HEADER_SIZE + dataSize)
+        buffer.order(ByteOrder.LITTLE_ENDIAN)
+
+        // Header (22 bytes)
+        buffer.putInt(MAGIC_XTG)
+        buffer.putShort(config.width.toShort())
+        buffer.putShort(config.height.toShort())
+        buffer.put(0)  // colorMode
+        buffer.put(0)  // compression
+        buffer.putInt(dataSize)
+        buffer.putLong(checksum.toLong() and 0xFFFFFFFFFFFFFFFL)  // checksum
+
+        // Data
+        buffer.put(bitmapData)
+
+        if (resized != bitmap) resized.recycle()
+
+        return EncodedFrame(buffer.array(), FrameFormat.XTG, config.width, config.height)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Public API - XTC Container
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /**
+     * Pack multiple encoded frames into an XTC container.
+     */
+    fun packXtc(
+        frames: List<EncodedFrame>,
+        metadata: XtcMetadata = XtcMetadata(),
+        chapters: List<XtcChapter> = emptyList(),
+        readingDirection: Int = DIRECTION_LTR
+    ): ByteArray {
+        require(frames.isNotEmpty()) { "No frames provided" }
+
+        // Verify all frames are same format
+        val format = frames.first().format
+        require(frames.all { it.format == format }) {
+            "All frames must be the same format"
+        }
+
+        val pageCount = frames.size
+        val width = frames.first().width
+        val height = frames.first().height
+
+        // Calculate offsets
+        val hasMetadata = metadata.title.isNotEmpty() || metadata.author.isNotEmpty()
+        val hasChapters = chapters.isNotEmpty()
+
+        var currentOffset = XTC_HEADER_SIZE
+        val metadataOffset = if (hasMetadata) currentOffset.toLong() else 0L
+        if (hasMetadata) currentOffset += XTC_METADATA_SIZE
+
+        val chaptersOffset = currentOffset.toLong()
+        if (hasChapters) currentOffset += XTC_CHAPTER_SIZE * chapters.size
+
+        val indexOffset = currentOffset.toLong()
+        val dataOffset = indexOffset + (XTC_INDEX_ENTRY_SIZE * pageCount)
+        val totalDataSize = frames.sumOf { it.data.size }
+        val totalFileSize = dataOffset.toInt() + totalDataSize
+
+        val buffer = ByteBuffer.allocate(totalFileSize)
+        buffer.order(ByteOrder.LITTLE_ENDIAN)
+
+        // === Header (48 bytes) ===
+        buffer.putInt(MAGIC_XTC)
+        buffer.putShort(XTC_VERSION)
+        buffer.putShort(pageCount.toShort())
+        buffer.put(readingDirection.toByte())
+        buffer.put(if (hasMetadata) 1 else 0)
+        buffer.put(0)  // hasThumbnails
+        buffer.put(if (hasChapters) 1 else 0)
+        buffer.putInt(0)  // currentPage
+        buffer.putLong(metadataOffset)
+        buffer.putLong(indexOffset)
+        buffer.putLong(dataOffset)
+        buffer.putLong(0)  // thumbOffset
+
+        // === Metadata (256 bytes) ===
+        if (hasMetadata) {
+            val metaStart = buffer.position()
+
+            // Title (128 bytes)
+            writeFixedString(buffer, metadata.title, 128)
+
+            // Author (64 bytes)
+            writeFixedString(buffer, metadata.author, 64)
+
+            // Publisher (32 bytes)
+            writeFixedString(buffer, metadata.publisher, 32)
+
+            // Language (16 bytes)
+            writeFixedString(buffer, metadata.language, 16)
+
+            // Create time (4 bytes)
+            buffer.putInt(metadata.createTime.toInt())
+
+            // Cover page (2 bytes)
+            buffer.putShort(metadata.coverPage.toShort())
+
+            // Chapter count (2 bytes)
+            buffer.putShort(chapters.size.toShort())
+
+            // Reserved (8 bytes)
+            buffer.putLong(0)
+
+            // Ensure we're at correct position
+            buffer.position(metaStart + XTC_METADATA_SIZE)
+        }
+
+        // === Chapters (96 bytes each) ===
+        for (chapter in chapters) {
+            val chapterStart = buffer.position()
+
+            // Name (80 bytes)
+            writeFixedString(buffer, chapter.name, 80)
+
+            // Start page (2 bytes)
+            buffer.putShort(chapter.startPage.toShort())
+
+            // End page (2 bytes)
+            buffer.putShort(chapter.endPage.toShort())
+
+            // Reserved (12 bytes)
+            buffer.putInt(0)
+            buffer.putInt(0)
+            buffer.putInt(0)
+
+            buffer.position(chapterStart + XTC_CHAPTER_SIZE)
+        }
+
+        // === Index Table (16 bytes per page) ===
+        var currentDataOffset = dataOffset
+        for (frame in frames) {
+            buffer.putLong(currentDataOffset)
+            buffer.putInt(frame.data.size)
+            buffer.putShort(width.toShort())
+            buffer.putShort(height.toShort())
+            currentDataOffset += frame.data.size.toLong()
+        }
+
+        // === Page Data ===
+        for (frame in frames) {
+            buffer.put(frame.data)
+        }
+
         return buffer.array()
     }
 
     /**
-     * Streaming XTC writer that writes pages directly to disk to avoid OOM.
-     * Reserves space for header + index upfront, writes pages directly to final position.
-     * Only seeks back to write the header/index at the end - no data copying needed.
+     * Streaming XTC writer for large files to avoid OOM.
      */
     class XtcStreamWriter(
         private val outputFile: File,
-        estimatedMaxPages: Int = DEFAULT_MAX_PAGES
+        private val width: Int = 480,
+        private val height: Int = 800,
+        private val metadata: XtcMetadata = XtcMetadata(),
+        private val chapters: List<XtcChapter> = emptyList(),
+        private val readingDirection: Int = DIRECTION_LTR,
+        private var estimatedMaxPages: Int = DEFAULT_MAX_PAGES
     ) {
         companion object {
-            // 10,000 pages covers most books (16 bytes per index entry = 160KB reserved)
             const val DEFAULT_MAX_PAGES = 10000
         }
 
@@ -642,31 +400,34 @@ object XtcEncoder {
         private var reservedIndexSize: Int = 0
         private var dataStartOffset: Long = 0
 
-        fun start(title: String, author: String) {
+        fun start() {
             raf = RandomAccessFile(outputFile, "rw")
             raf?.setLength(0)
 
-            // Calculate reserved space for header + metadata + index
-            reservedIndexSize = estimatedMaxPages * XTC_INDEX_ENTRY_SIZE
-            dataStartOffset = (XTC_HEADER_SIZE + XTC_METADATA_SIZE + reservedIndexSize).toLong()
+            val hasMetadata = metadata.title.isNotEmpty() || metadata.author.isNotEmpty()
+            val hasChapters = chapters.isNotEmpty()
 
-            // Seek to data start position - we'll write header/index at the end
+            // Calculate reserved space
+            var headerSpace = XTC_HEADER_SIZE
+            if (hasMetadata) headerSpace += XTC_METADATA_SIZE
+            if (hasChapters) headerSpace += XTC_CHAPTER_SIZE * chapters.size
+
+            reservedIndexSize = estimatedMaxPages * XTC_INDEX_ENTRY_SIZE
+            dataStartOffset = (headerSpace + reservedIndexSize).toLong()
+
+            // Seek to data start - write header/index at the end
             raf?.seek(dataStartOffset)
         }
 
-        private var estimatedMaxPages: Int = DEFAULT_MAX_PAGES
-
-        fun writePage(pageData: ByteArray) {
+        fun writePage(frame: EncodedFrame) {
             val file = raf ?: return
 
-            // Check if we've exceeded reserved index space
             if (pageSizes.size >= estimatedMaxPages) {
-                // Need to expand - shift all existing page data
                 expandIndexSpace(file)
             }
 
-            pageSizes.add(pageData.size)
-            file.write(pageData)
+            pageSizes.add(frame.data.size)
+            file.write(frame.data)
         }
 
         private fun expandIndexSpace(file: RandomAccessFile) {
@@ -678,7 +439,6 @@ object XtcEncoder {
             val currentPos = file.filePointer
             val pageDataSize = currentPos - dataStartOffset
 
-            // Extend file and shift page data
             file.setLength(file.length() + additionalSpace)
 
             val chunkSize = 65536
@@ -697,42 +457,43 @@ object XtcEncoder {
                 remaining -= readSize
             }
 
-            // Update offsets
             reservedIndexSize = newReservedSize
             dataStartOffset += additionalSpace
             estimatedMaxPages = newMaxPages
 
-            // Seek to end for next page write
             file.seek(dataStartOffset + pageDataSize)
         }
 
-        fun finish(title: String, author: String) {
+        fun finish() {
             val file = raf ?: return
 
             if (pageSizes.isEmpty()) {
                 file.close()
                 raf = null
-                throw IllegalStateException("No pages rendered")
+                throw IllegalStateException("No pages written")
             }
 
             val pageCount = pageSizes.size
-            val chapters = emptyList<ChapterInfo>()
-            val chaptersSize = chapters.size * XTC_CHAPTER_ENTRY_SIZE
+            val hasMetadata = metadata.title.isNotEmpty() || metadata.author.isNotEmpty()
+            val hasChapters = chapters.isNotEmpty()
+
+            // Calculate actual offsets
+            var headerSpace = XTC_HEADER_SIZE
+            val metadataOffset = if (hasMetadata) headerSpace.toLong() else 0L
+            if (hasMetadata) headerSpace += XTC_METADATA_SIZE
+
+            val chaptersOffset = headerSpace.toLong()
+            if (hasChapters) headerSpace += XTC_CHAPTER_SIZE * chapters.size
+
+            val indexOffset = headerSpace.toLong()
             val actualIndexSize = pageCount * XTC_INDEX_ENTRY_SIZE
-
-            val metadataOffset = XTC_HEADER_SIZE
-            val chaptersOffset = metadataOffset + XTC_METADATA_SIZE
-            val indexOffset = chaptersOffset + chaptersSize
-
-            // Calculate actual data offset (using reserved space)
             val actualDataOffset = indexOffset + actualIndexSize
 
-            // If we reserved more space than needed, we need to shift data back
+            // Shift data if we reserved more space than needed
             val unusedSpace = reservedIndexSize - actualIndexSize
             if (unusedSpace > 0) {
-                // Shift page data to close the gap
                 val currentDataStart = dataStartOffset
-                val newDataStart = (XTC_HEADER_SIZE + XTC_METADATA_SIZE + actualIndexSize).toLong()
+                val newDataStart = actualDataOffset
                 val pageDataSize = file.length() - currentDataStart
 
                 val chunkSize = 65536
@@ -747,73 +508,85 @@ object XtcEncoder {
                     offset += readSize
                 }
 
-                // Truncate file to remove unused space
                 file.setLength(newDataStart + pageDataSize)
             }
 
-            // Seek to beginning and write header
+            // Write header
             file.seek(0)
 
-            // Write header (48 bytes)
-            // Write header (56 bytes)
             val headerBuffer = ByteBuffer.allocate(XTC_HEADER_SIZE)
             headerBuffer.order(ByteOrder.LITTLE_ENDIAN)
-            headerBuffer.put(0x58.toByte()) // X
-            headerBuffer.put(0x54.toByte()) // T
-            headerBuffer.put(0x43.toByte()) // C
-            headerBuffer.put(0x00.toByte())
-            headerBuffer.putShort(0x0100.toShort()) // version
+            headerBuffer.putInt(MAGIC_XTC)
+            headerBuffer.putShort(XTC_VERSION)
             headerBuffer.putShort(pageCount.toShort())
-            headerBuffer.put(0.toByte()) // readDirection = L→R
-            headerBuffer.put(1.toByte()) // hasMetadata
-            headerBuffer.put(0.toByte()) // hasThumbnails
-            headerBuffer.put(if (chapters.isNotEmpty()) 1.toByte() else 0.toByte())
-            headerBuffer.putInt(1) // currentPage (1-based)
-            headerBuffer.putLong(metadataOffset.toLong())
-            headerBuffer.putLong(indexOffset.toLong())
-            headerBuffer.putLong(actualDataOffset.toLong())
-            headerBuffer.putLong(0L) // thumbOffset
-            headerBuffer.putLong(chaptersOffset.toLong()) // chapterOffset
+            headerBuffer.put(readingDirection.toByte())
+            headerBuffer.put(if (hasMetadata) 1 else 0)
+            headerBuffer.put(0)  // hasThumbnails
+            headerBuffer.put(if (hasChapters) 1 else 0)
+            headerBuffer.putInt(0)  // currentPage
+            headerBuffer.putLong(metadataOffset)
+            headerBuffer.putLong(indexOffset)
+            headerBuffer.putLong(actualDataOffset)
+            headerBuffer.putLong(0)  // thumbOffset
             file.write(headerBuffer.array())
 
-            // Write metadata (256 bytes)
-            val metaBuffer = ByteBuffer.allocate(XTC_METADATA_SIZE)
-            metaBuffer.order(ByteOrder.LITTLE_ENDIAN)
+            // Write metadata
+            if (hasMetadata) {
+                val metaBuffer = ByteBuffer.allocate(XTC_METADATA_SIZE)
+                metaBuffer.order(ByteOrder.LITTLE_ENDIAN)
 
-            val sanitizedTitle = title.take(127).toByteArray(Charsets.UTF_8)
-            metaBuffer.put(sanitizedTitle)
-            metaBuffer.position(128)
+                val titleBytes = metadata.title.take(127).toByteArray(Charsets.UTF_8)
+                metaBuffer.put(titleBytes)
+                metaBuffer.position(128)
 
-            val sanitizedAuthor = author.take(63).toByteArray(Charsets.UTF_8)
-            metaBuffer.put(sanitizedAuthor)
-            metaBuffer.position(192)
+                val authorBytes = metadata.author.take(63).toByteArray(Charsets.UTF_8)
+                metaBuffer.put(authorBytes)
+                metaBuffer.position(192)
 
-            // publisher (32 bytes) - skip
-            metaBuffer.position(224)
+                val publisherBytes = metadata.publisher.take(31).toByteArray(Charsets.UTF_8)
+                metaBuffer.put(publisherBytes)
+                metaBuffer.position(224)
 
-            // language (16 bytes) - skip
-            metaBuffer.position(240)
+                val langBytes = metadata.language.take(15).toByteArray(Charsets.UTF_8)
+                metaBuffer.put(langBytes)
+                metaBuffer.position(240)
 
-            metaBuffer.putInt((System.currentTimeMillis() / 1000).toInt()) // createTime
-            metaBuffer.putShort(0) // coverPage
-            metaBuffer.putShort(chapters.size.toShort()) // chapterCount
-            metaBuffer.putLong(0L) // reserved
+                metaBuffer.putInt(metadata.createTime.toInt())
+                metaBuffer.putShort(metadata.coverPage.toShort())
+                metaBuffer.putShort(chapters.size.toShort())
+                metaBuffer.putLong(0)  // reserved
 
-            file.write(metaBuffer.array())
+                file.write(metaBuffer.array())
+            }
 
-            // Write chapters (empty for now)
+            // Write chapters
+            for (chapter in chapters) {
+                val chapterBuffer = ByteBuffer.allocate(XTC_CHAPTER_SIZE)
+                chapterBuffer.order(ByteOrder.LITTLE_ENDIAN)
+
+                val nameBytes = chapter.name.take(79).toByteArray(Charsets.UTF_8)
+                chapterBuffer.put(nameBytes)
+                chapterBuffer.position(80)
+                chapterBuffer.putShort(chapter.startPage.toShort())
+                chapterBuffer.putShort(chapter.endPage.toShort())
+                chapterBuffer.putInt(0)
+                chapterBuffer.putInt(0)
+                chapterBuffer.putInt(0)
+
+                file.write(chapterBuffer.array())
+            }
 
             // Write index table
-            var currentAbsoluteOffset = actualDataOffset.toLong()
+            var currentOffset = actualDataOffset
             for (pageSize in pageSizes) {
                 val entryBuffer = ByteBuffer.allocate(XTC_INDEX_ENTRY_SIZE)
                 entryBuffer.order(ByteOrder.LITTLE_ENDIAN)
-                entryBuffer.putLong(currentAbsoluteOffset)
+                entryBuffer.putLong(currentOffset)
                 entryBuffer.putInt(pageSize)
-                entryBuffer.putShort(PAGE_WIDTH.toShort())
-                entryBuffer.putShort(PAGE_HEIGHT.toShort())
+                entryBuffer.putShort(width.toShort())
+                entryBuffer.putShort(height.toShort())
                 file.write(entryBuffer.array())
-                currentAbsoluteOffset += pageSize
+                currentOffset += pageSize.toLong()
             }
 
             file.close()
@@ -826,153 +599,272 @@ object XtcEncoder {
         }
     }
 
-    /**
-     * Packs multiple XTG/XTH pages into an XTC file.
-     * @deprecated Use XtcStreamWriter for large files to avoid OOM
-     */
-    fun packXtc(title: String, author: String, pages: List<ByteArray>): ByteArray {
-        if (pages.isEmpty()) {
-            throw IllegalStateException("No pages rendered")
-        }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Private - Image Processing
+    // ═══════════════════════════════════════════════════════════════════════════
 
-        val pageCount = pages.size
-        val chapters = emptyList<ChapterInfo>()
-
-        val chaptersSize = chapters.size * XTC_CHAPTER_ENTRY_SIZE
-        val indexSize = pageCount * XTC_INDEX_ENTRY_SIZE
-        val totalDataSize = pages.sumOf { it.size }
-
-        val metadataOffset = XTC_HEADER_SIZE
-        val chaptersOffset = metadataOffset + XTC_METADATA_SIZE
-        val indexOffset = chaptersOffset + chaptersSize
-        val dataOffset = indexOffset + indexSize
-        val totalFileSize = dataOffset + totalDataSize
-
-        val buffer = ByteBuffer.allocate(totalFileSize)
-        buffer.order(ByteOrder.LITTLE_ENDIAN)
-
-        // === Header (56 bytes) ===
-        buffer.put(0x58.toByte()) // X
-        buffer.put(0x54.toByte()) // T
-        buffer.put(0x43.toByte()) // C
-        buffer.put(0x00.toByte())
-        buffer.putShort(0x0100.toShort()) // version
-        buffer.putShort(pageCount.toShort())
-        buffer.put(0.toByte()) // readDirection = L→R
-        buffer.put(1.toByte()) // hasMetadata
-        buffer.put(0.toByte()) // hasThumbnails
-        buffer.put(if (chapters.isNotEmpty()) 1.toByte() else 0.toByte())
-        buffer.putInt(1) // currentPage (1-based)
-        buffer.putLong(metadataOffset.toLong())
-        buffer.putLong(indexOffset.toLong())
-        buffer.putLong(dataOffset.toLong())
-        buffer.putLong(0L) // thumbOffset
-        buffer.putLong(chaptersOffset.toLong()) // chapterOffset
-
-        // === Metadata (256 bytes) ===
-        val metaStart = buffer.position()
-
-        val sanitizedTitle = title.take(127)
-        buffer.put(sanitizedTitle.toByteArray(Charsets.UTF_8))
-        buffer.position(metaStart + 128)
-
-        val sanitizedAuthor = author.take(63)
-        buffer.put(sanitizedAuthor.toByteArray(Charsets.UTF_8))
-        buffer.position(metaStart + 192)
-
-        // publisher (32 bytes) - skip
-        buffer.position(metaStart + 224)
-
-        // language (16 bytes) - skip
-        buffer.position(metaStart + 240)
-
-        buffer.putInt((System.currentTimeMillis() / 1000).toInt()) // createTime
-        buffer.putShort(0) // coverPage
-        buffer.putShort(chapters.size.toShort()) // chapterCount
-        buffer.putLong(0L) // reserved
-
-        buffer.position(metaStart + XTC_METADATA_SIZE)
-
-        // === Chapters (96 bytes each) ===
-        for (chapter in chapters) {
-            val chapterStart = buffer.position()
-            val chapterName = chapter.name.take(79)
-            buffer.put(chapterName.toByteArray(Charsets.UTF_8))
-            buffer.position(chapterStart + 80)
-            buffer.putShort(chapter.startPage.toShort())
-            buffer.putShort(chapter.endPage.toShort())
-            buffer.putInt(0) // reserved 1
-            buffer.putInt(0) // reserved 2
-            buffer.putInt(0) // reserved 3
-        }
-
-        // === Index Table (16 bytes per page) ===
-        var currentAbsoluteOffset = dataOffset.toLong()
-        for (page in pages) {
-            buffer.putLong(currentAbsoluteOffset)
-            buffer.putInt(page.size)
-            buffer.putShort(PAGE_WIDTH.toShort())
-            buffer.putShort(PAGE_HEIGHT.toShort())
-            currentAbsoluteOffset += page.size
-        }
-
-        // === Data Area ===
-        for (page in pages) {
-            buffer.put(page)
-        }
-
-        return buffer.array()
-    }
-
-    /**
-     * Creates a scaled BitmapDrawable from image bytes, fitting within the available width.
-     */
-    fun createScaledDrawable(bytes: ByteArray, availableWidth: Int): Drawable? {
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
-
-        val scale = if (bitmap.width > availableWidth) {
-            availableWidth.toFloat() / bitmap.width
+    private fun resizeBitmap(bitmap: Bitmap, targetWidth: Int, targetHeight: Int): Bitmap {
+        return if (bitmap.width != targetWidth || bitmap.height != targetHeight) {
+            Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
         } else {
-            1f
+            bitmap
         }
-
-        val newWidth = (bitmap.width * scale).toInt()
-        val newHeight = (bitmap.height * scale).toInt()
-
-        val scaledBitmap = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
-        if (scaledBitmap != bitmap) {
-            bitmap.recycle()
-        }
-
-        val drawable = BitmapDrawable(Resources.getSystem(), scaledBitmap)
-        drawable.setBounds(0, 0, newWidth, newHeight)
-        return drawable
     }
 
-    data class ChapterInfo(val name: String, val startPage: Int, val endPage: Int)
+    private fun bitmapToGrayscale(bitmap: Bitmap): FloatArray {
+        val width = bitmap.width
+        val height = bitmap.height
+        val pixels = IntArray(width * height)
+        bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
 
-    class CustomTypefaceSpan(private val typeface: Typeface) : MetricAffectingSpan() {
-        override fun updateDrawState(ds: TextPaint) {
-            applyCustomTypeface(ds, typeface)
+        return FloatArray(pixels.size) { i ->
+            val color = pixels[i]
+            val r = (color shr 16) and 0xFF
+            val g = (color shr 8) and 0xFF
+            val b = color and 0xFF
+            (0.299f * r + 0.587f * g + 0.114f * b)
         }
+    }
 
-        override fun updateMeasureState(paint: TextPaint) {
-            applyCustomTypeface(paint, typeface)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Private - Quantization
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private fun quantize2Level(
+        gray: FloatArray,
+        width: Int,
+        height: Int,
+        threshold: Int
+    ): ByteArray {
+        return ByteArray(gray.size) { i ->
+            if (gray[i] < threshold) 0 else 1
         }
+    }
 
-        private fun applyCustomTypeface(paint: Paint, tf: Typeface) {
-            val old = paint.typeface
-            val oldStyle = old?.style ?: 0
-
-            val fake = oldStyle and tf.style.inv()
-            if (fake and Typeface.BOLD != 0) {
-                paint.isFakeBoldText = true
+    private fun quantize4Level(
+        gray: FloatArray,
+        width: Int,
+        height: Int,
+        t1: Int,
+        t2: Int,
+        t3: Int
+    ): ByteArray {
+        return ByteArray(gray.size) { i ->
+            when {
+                gray[i] < t1 -> 0
+                gray[i] < t2 -> 1
+                gray[i] < t3 -> 2
+                else -> 3
             }
-            if (fake and Typeface.ITALIC != 0) {
-                paint.textSkewX = -0.25f
-            }
-
-            paint.typeface = tf
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Private - Floyd-Steinberg Dithering
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private fun floydSteinbergDither2Level(
+        gray: FloatArray,
+        width: Int,
+        height: Int,
+        threshold: Float,
+        strength: Float
+    ): ByteArray {
+        val working = gray.copyOf()
+        val result = ByteArray(width * height)
+
+        val wRight = (7f / 16f) * strength
+        val wBottomLeft = (3f / 16f) * strength
+        val wBottom = (5f / 16f) * strength
+        val wBottomRight = (1f / 16f) * strength
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val idx = y * width + x
+                val oldVal = working[idx]
+
+                val newVal: Float
+                val level: Byte
+                if (oldVal < threshold) {
+                    level = 0
+                    newVal = 0f
+                } else {
+                    level = 1
+                    newVal = 255f
+                }
+
+                result[idx] = level
+                val error = oldVal - newVal
+
+                if (x + 1 < width) {
+                    working[idx + 1] += error * wRight
+                }
+                if (y + 1 < height) {
+                    if (x > 0) {
+                        working[idx + width - 1] += error * wBottomLeft
+                    }
+                    working[idx + width] += error * wBottom
+                    if (x + 1 < width) {
+                        working[idx + width + 1] += error * wBottomRight
+                    }
+                }
+            }
+        }
+
+        return result
+    }
+
+    private fun floydSteinbergDither4Level(
+        gray: FloatArray,
+        width: Int,
+        height: Int,
+        t1: Float,
+        t2: Float,
+        t3: Float,
+        strength: Float
+    ): ByteArray {
+        val working = gray.copyOf()
+        val result = ByteArray(width * height)
+
+        val wRight = (7f / 16f) * strength
+        val wBottomLeft = (3f / 16f) * strength
+        val wBottom = (5f / 16f) * strength
+        val wBottomRight = (1f / 16f) * strength
+
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val idx = y * width + x
+                val oldVal = working[idx].coerceIn(0f, 255f)
+
+                // Find nearest level
+                val (_, newVal) = when {
+                    oldVal < t1 -> 0.toByte() to 0f
+                    oldVal < t2 -> 1.toByte() to 85f
+                    oldVal < t3 -> 2.toByte() to 170f
+                    else -> 3.toByte() to 255f
+                }
+                
+                // Map to 0, 1, 2, 3
+                val level = when {
+                    oldVal < t1 -> 0.toByte()
+                    oldVal < t2 -> 1.toByte()
+                    oldVal < t3 -> 2.toByte()
+                    else -> 3.toByte()
+                }
+
+                result[idx] = level
+                val error = oldVal - newVal
+
+                if (x + 1 < width) {
+                    working[idx + 1] += error * wRight
+                }
+                if (y + 1 < height) {
+                    if (x > 0) {
+                        working[idx + width - 1] += error * wBottomLeft
+                    }
+                    working[idx + width] += error * wBottom
+                    if (x + 1 < width) {
+                        working[idx + width + 1] += error * wBottomRight
+                    }
+                }
+            }
+        }
+
+        return result
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Private - Bitplane Encoding
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private fun encodeXthBitplanes(
+        quantized: ByteArray,
+        width: Int,
+        height: Int
+    ): Pair<ByteArray, ByteArray> {
+        // Map pixel values to Xteink LUT (swap middle values)
+        // 0 -> 0 (white), 1 -> 2 (dark grey), 2 -> 1 (light grey), 3 -> 3 (black)
+        val lutMap = intArrayOf(0, 2, 1, 3)
+
+        // Apply LUT mapping and invert
+        val mapped = ByteArray(quantized.size) { i ->
+            (3 - lutMap[quantized[i].toInt()]).toByte()
+        }
+
+        val bytesPerColumn = (height + 7) / 8
+        val planeSize = width * bytesPerColumn
+
+        val plane1 = ByteArray(planeSize)
+        val plane2 = ByteArray(planeSize)
+
+        var byteIndex = 0
+
+        // Scan columns from right to left
+        for (x in (width - 1) downTo 0) {
+            for (yGroup in 0 until bytesPerColumn) {
+                var byte1 = 0
+                var byte2 = 0
+
+                for (i in 0 until 8) {
+                    val y = yGroup * 8 + i
+                    if (y < height) {
+                        val pixelVal = mapped[y * width + x].toInt() and 0x03
+                        val bit1 = (pixelVal shr 1) and 1  // High bit
+                        val bit2 = pixelVal and 1          // Low bit
+
+                        byte1 = byte1 or (bit1 shl (7 - i))
+                        byte2 = byte2 or (bit2 shl (7 - i))
+                    }
+                }
+
+                plane1[byteIndex] = byte1.toByte()
+                plane2[byteIndex] = byte2.toByte()
+                byteIndex++
+            }
+        }
+
+        return plane1 to plane2
+    }
+
+    private fun encodeXtgBitmap(quantized: ByteArray, width: Int, height: Int): ByteArray {
+        val bytesPerRow = (width + 7) / 8
+        val bitmapData = ByteArray(bytesPerRow * height)
+
+        for (y in 0 until height) {
+            for (byteIdx in 0 until bytesPerRow) {
+                var byteVal = 0
+                for (bitIdx in 0 until 8) {
+                    val x = byteIdx * 8 + bitIdx
+                    if (x < width) {
+                        val pixel = quantized[y * width + x].toInt() and 1
+                        byteVal = byteVal or (pixel shl (7 - bitIdx))
+                    }
+                }
+                bitmapData[y * bytesPerRow + byteIdx] = byteVal.toByte()
+            }
+        }
+
+        return bitmapData
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Private - Utilities
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    private fun writeFixedString(buffer: ByteBuffer, str: String, size: Int) {
+        val bytes = str.take(size - 1).toByteArray(Charsets.UTF_8)
+        val startPos = buffer.position()
+        buffer.put(bytes)
+        while (buffer.position() < startPos + size) {
+            buffer.put(0)
+        }
+    }
+
+    private fun ByteArray.sum(): Long {
+        var sum = 0L
+        for (b in this) {
+            sum += (b.toInt() and 0xFF)
+        }
+        return sum
     }
 }

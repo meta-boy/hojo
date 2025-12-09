@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -35,6 +37,7 @@ import wtf.anurag.hojo.ui.apps.converter.XtcPreviewIntermediate
 import wtf.anurag.hojo.ui.apps.filemanager.FileManagerApp
 import wtf.anurag.hojo.ui.apps.quicklink.QuickLinkModal
 import wtf.anurag.hojo.ui.apps.settings.SettingsApp
+import wtf.anurag.hojo.ui.apps.renderer.RendererApp
 import wtf.anurag.hojo.ui.apps.tasks.TasksApp
 import wtf.anurag.hojo.ui.apps.wallpaper.WallpaperEditor
 import wtf.anurag.hojo.ui.components.AppDock
@@ -196,6 +199,7 @@ fun MainScreen() {
                                                                                 .background
                                                                 )
                                                                 .statusBarsPadding()
+                                                                .verticalScroll(rememberScrollState())
                                                                 .padding(16.dp)
                                         ) {
                                                 StatusWidget(
@@ -241,6 +245,11 @@ fun MainScreen() {
                                                                                 navController
                                                                                         .navigate(
                                                                                                 "tasks"
+                                                                                        )
+                                                                        "Renderer" ->
+                                                                                navController
+                                                                                        .navigate(
+                                                                                                "renderer"
                                                                                         )
                                                                         "Converter" ->
                                                                                 navController
@@ -443,6 +452,35 @@ fun MainScreen() {
                                         )
                                 }
                         ) { TasksApp(onBack = { navController.popBackStack() }) }
+
+                        composable(
+                                "renderer",
+                                enterTransition = {
+                                        slideInHorizontally(
+                                                animationSpec = tween(300),
+                                                initialOffsetX = { it }
+                                        )
+                                },
+                                exitTransition = {
+                                        slideOutHorizontally(
+                                                animationSpec = tween(300),
+                                                targetOffsetX = { it }
+                                        )
+                                },
+                                popEnterTransition = {
+                                        slideInHorizontally(
+                                                animationSpec = tween(300),
+                                                initialOffsetX = { -it }
+                                        )
+                                },
+                                popExitTransition = {
+                                        slideOutHorizontally(
+                                                animationSpec = tween(300),
+                                                targetOffsetX = { it }
+                                        )
+                                }
+                        ) { RendererApp(onBack = { navController.popBackStack() }) }
+
                 }
         }
 }

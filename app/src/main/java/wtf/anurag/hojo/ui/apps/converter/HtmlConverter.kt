@@ -37,7 +37,7 @@ class HtmlConverter(private val okHttpClient: OkHttpClient? = null) {
         settings: ConverterSettings = ConverterSettings(),
         onProgress: (current: Int, total: Int) -> Unit = { _, _ -> }
     ): HtmlConversionResult {
-        val textPaint = XtcEncoder.createTextPaint(settings)
+        val textPaint = XtcRenderer.createTextPaint(settings)
 
         // Parse and clean HTML using Jsoup
         val doc = Jsoup.parse(html)
@@ -67,7 +67,7 @@ class HtmlConverter(private val okHttpClient: OkHttpClient? = null) {
 
                     if (bytes != null) {
                         val availableWidth = 480 - (settings.margin * 2)
-                        return@ImageGetter XtcEncoder.createScaledDrawable(bytes, availableWidth)
+                        return@ImageGetter XtcRenderer.createScaledDrawable(bytes, availableWidth)
                     }
                 }
             } catch (e: Exception) {
@@ -77,27 +77,52 @@ class HtmlConverter(private val okHttpClient: OkHttpClient? = null) {
         }
 
         // Convert HTML to Spanned
-        val spanned = XtcEncoder.htmlToSpanned(bodyHtml, imageGetter, textPaint, settings)
+        val spanned = XtcRenderer.htmlToSpanned(bodyHtml, imageGetter, textPaint, settings)
 
         // Render pages - pass colorMode from settings
         // Calculate total pages first
-        val breaks = XtcEncoder.calculatePageBreaks(spanned, textPaint, settings)
+        val breaks = XtcRenderer.calculatePageBreaks(spanned, textPaint, settings)
         val totalPages = breaks.size
 
         // Render pages with footer info
-        val pageInfo = XtcEncoder.PageInfo(1, totalPages)
-        val pages = XtcEncoder.renderPages(
+        val pageInfo = XtcRenderer.PageInfo(1, totalPages)
+        
+        val frames = mutableListOf<XtcEncoder.EncodedFrame>()
+        var globalPage = 1
+        
+        XtcRenderer.renderPages(
             spanned, 
             textPaint, 
             settings, 
-            onProgress, 
-            settings.colorMode,
             title,
             pageInfo
-        )
+        ) { bitmap -> 
+            val config = XtcEncoder.EncoderConfig(
+                width = bitmap.width,
+                height = bitmap.height,
+                enableDithering = settings.enableDithering,
+                ditherStrength = settings.ditherStrength / 100f
+            )
+
+            val frame = if (settings.colorMode == ConverterSettings.ColorMode.MONOCHROME) {
+                XtcEncoder.encodeXtg(bitmap, config)
+            } else {
+                XtcEncoder.encodeXth(bitmap, config)
+            }
+            
+            frames.add(frame)
+            bitmap.recycle()
+            
+            onProgress(globalPage, totalPages)
+            globalPage++
+        }
 
         // Pack to XTC
-        val xtcData = XtcEncoder.packXtc(title, "Quick Link", pages)
+        val metadata = XtcEncoder.XtcMetadata(
+            title = title,
+            author = "Quick Link" // Default author for HTML
+        )
+        val xtcData = XtcEncoder.packXtc(frames, metadata)
         return HtmlConversionResult(title, xtcData)
     }
 }
