@@ -38,15 +38,17 @@ object XtcEncoder {
     private const val PAGE_WIDTH = 480
     private const val PAGE_HEIGHT = 800
     private const val FONT_SCALE_FACTOR = 1.4f // 140% font scaling
+    private const val FOOTER_HEIGHT = 40
+    private const val FOOTER_PADDING = 8
 
     // Header sizes
     private const val XTG_HEADER_SIZE = 22
     private const val XTH_HEADER_SIZE = 22
 
     // XTC structure sizes (per spec)
-    private const val XTC_HEADER_SIZE = 48
+    private const val XTC_HEADER_SIZE = 56
     private const val XTC_METADATA_SIZE = 256
-    private const val XTC_CHAPTER_ENTRY_SIZE = 88
+    private const val XTC_CHAPTER_ENTRY_SIZE = 96
     private const val XTC_INDEX_ENTRY_SIZE = 16
 
     /**
@@ -101,14 +103,77 @@ object XtcEncoder {
     }
 
     /**
+     * Data class to hold pagination info for footer rendering.
+     */
+    data class PageInfo(
+        val globalCurrentPage: Int,
+        val globalTotalPages: Int
+    )
+
+    /**
+     * Calculates page breaks for the content.
+     * Returns a list of Y-offsets for each page start.
+     */
+    fun calculatePageBreaks(
+        spanned: Spanned,
+        textPaint: TextPaint,
+        settings: ConverterSettings
+    ): List<Int> {
+        val width = PAGE_WIDTH - (settings.margin * 2)
+        val layout = StaticLayout.Builder.obtain(
+            spanned,
+            0,
+            spanned.length,
+            textPaint,
+            width
+        )
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setLineSpacing(0f, settings.lineHeight)
+            .setIncludePad(true)
+            .build()
+
+        // Reserve space for footer
+        val contentHeight = PAGE_HEIGHT - (settings.margin * 2) - FOOTER_HEIGHT
+
+        val breaks = mutableListOf<Int>()
+        var yOffset = 0
+        breaks.add(0) // First page starts at 0
+
+        while (yOffset < layout.height) {
+            val proposedBottom = yOffset + contentHeight
+            var nextOffset = proposedBottom
+
+            if (proposedBottom < layout.height) {
+                val lineIndex = layout.getLineForVertical(proposedBottom)
+                val lineTop = layout.getLineTop(lineIndex)
+
+                if (lineTop < proposedBottom && lineTop > yOffset) {
+                    nextOffset = lineTop
+                }
+            }
+
+            if (nextOffset < layout.height) {
+                breaks.add(nextOffset)
+            }
+            yOffset = nextOffset
+        }
+
+        return breaks
+    }
+
+    /**
      * Renders spanned content into encoded pages (XTG or XTH based on colorMode).
+     * @param title Book title for footer
+     * @param pageInfo Pagination info (optional). If provided, footer is drawn.
      */
     fun renderPages(
         spanned: Spanned,
         textPaint: TextPaint,
         settings: ConverterSettings,
         onProgress: (current: Int, total: Int) -> Unit,
-        colorMode: ColorMode = ColorMode.GRAYSCALE_4
+        colorMode: ColorMode = ColorMode.GRAYSCALE_4,
+        title: String? = null,
+        pageInfo: PageInfo? = null
     ): List<ByteArray> {
         val pages = mutableListOf<ByteArray>()
 
@@ -125,10 +190,16 @@ object XtcEncoder {
             .setIncludePad(true)
             .build()
 
-        val contentHeight = PAGE_HEIGHT - (settings.margin * 2)
+        // Reserve space for footer
+        val contentHeight = PAGE_HEIGHT - (settings.margin * 2) - FOOTER_HEIGHT
+
+        // Get page breaks (reusing logic would be better but for now inline to keep layout object)
+        // Actually, we can just iterate using the same logic as calculatePageBreaks
+        // or we can assume calculatePageBreaks was called before for total count?
+        // Let's implement the loop here to perform drawing.
 
         var yOffset = 0
-        var pageCount = 0
+        var localPageCount = 0
 
         while (yOffset < layout.height) {
             val proposedBottom = yOffset + contentHeight
@@ -147,12 +218,13 @@ object XtcEncoder {
             val canvas = Canvas(bitmap)
             canvas.drawColor(Color.WHITE)
 
+            // Draw content
             canvas.save()
             canvas.clipRect(
                 0,
                 0,
                 PAGE_WIDTH,
-                (nextOffset - yOffset + settings.margin).coerceAtMost(PAGE_HEIGHT)
+                PAGE_HEIGHT - FOOTER_HEIGHT // Clip to exclude footer area from content
             )
             canvas.translate(
                 settings.margin.toFloat(),
@@ -160,6 +232,12 @@ object XtcEncoder {
             )
             layout.draw(canvas)
             canvas.restore()
+
+            // Draw Footer if info is available
+            if (title != null && pageInfo != null) {
+                val currentGlobal = pageInfo.globalCurrentPage + localPageCount
+                drawFooter(canvas, title, currentGlobal, pageInfo.globalTotalPages, settings)
+            }
 
             // Encode based on color mode
             val pageData = when (colorMode) {
@@ -172,8 +250,6 @@ object XtcEncoder {
                     encodeXtg(bitmap)
                 }
                 ColorMode.GRAYSCALE_4 -> {
-                    // For 4-level grayscale, we quantize to 4 levels
-                    // Optionally apply dithering for better gradients
                     if (settings.enableDithering) {
                         floydSteinbergDither4Level(bitmap, settings.ditherStrength)
                     } else {
@@ -187,12 +263,66 @@ object XtcEncoder {
             bitmap.recycle()
 
             yOffset = nextOffset
-            pageCount++
-            onProgress(pageCount, -1)
+            localPageCount++
+            onProgress(localPageCount, -1)
         }
 
         return pages
     }
+
+    private fun drawFooter(
+        canvas: Canvas,
+        title: String,
+        currentPage: Int,
+        totalPages: Int,
+        settings: ConverterSettings
+    ) {
+        val footerPaint = TextPaint().apply {
+            isAntiAlias = true
+            textSize = 12f * FONT_SCALE_FACTOR
+            color = Color.BLACK
+            typeface = Typeface.DEFAULT_BOLD
+        }
+
+        val footerY = (PAGE_HEIGHT - FOOTER_PADDING).toFloat()
+        val margin = settings.margin.toFloat()
+
+        // 1. Progress % (Left)
+        val progress = if (totalPages > 0) (currentPage.toFloat() / totalPages * 100).toInt() else 0
+        val batteryIcon = "\uD83D\uDD0B" // Battery symbol approximation or use icon if available.
+        // Actually user image shows a battery icon but unicode might fail on simple paint.
+        // Let's just use text "progress%" for now or similar to screenshot.
+        // Screenshot shows: [Icon] 100%
+        val progressText = "$progress%" 
+        // Note: For now using text only. If icon needed, would need resource/path drawing.
+        canvas.drawText(progressText, margin, footerY, footerPaint)
+
+        // 2. Title (Center)
+        // Ellipsize title if too long
+        val availableWidth = PAGE_WIDTH - (margin * 2)
+        val maxTitleWidth = availableWidth * 0.5f // 50% for title
+        val titleText = android.text.TextUtils.ellipsize(
+            title.uppercase(),
+            footerPaint,
+            maxTitleWidth,
+            android.text.TextUtils.TruncateAt.END
+        ).toString()
+        
+        val titleWidth = footerPaint.measureText(titleText)
+        val titleX = (PAGE_WIDTH - titleWidth) / 2
+        canvas.drawText(titleText, titleX, footerY, footerPaint)
+
+        // 3. Page Number (Right)
+        val pageText = "$currentPage"
+        val pageWidth = footerPaint.measureText(pageText)
+        val pageX = PAGE_WIDTH - margin - pageWidth
+        canvas.drawText(pageText, pageX, footerY, footerPaint)
+    }
+
+    /**
+     * Renders spanned content into encoded pages (XTG or XTH based on colorMode).
+     */
+
 
     /**
      * Simple threshold dithering - converts to pure black/white.
@@ -625,6 +755,7 @@ object XtcEncoder {
             file.seek(0)
 
             // Write header (48 bytes)
+            // Write header (56 bytes)
             val headerBuffer = ByteBuffer.allocate(XTC_HEADER_SIZE)
             headerBuffer.order(ByteOrder.LITTLE_ENDIAN)
             headerBuffer.put(0x58.toByte()) // X
@@ -642,6 +773,7 @@ object XtcEncoder {
             headerBuffer.putLong(indexOffset.toLong())
             headerBuffer.putLong(actualDataOffset.toLong())
             headerBuffer.putLong(0L) // thumbOffset
+            headerBuffer.putLong(chaptersOffset.toLong()) // chapterOffset
             file.write(headerBuffer.array())
 
             // Write metadata (256 bytes)
@@ -719,7 +851,7 @@ object XtcEncoder {
         val buffer = ByteBuffer.allocate(totalFileSize)
         buffer.order(ByteOrder.LITTLE_ENDIAN)
 
-        // === Header (48 bytes) ===
+        // === Header (56 bytes) ===
         buffer.put(0x58.toByte()) // X
         buffer.put(0x54.toByte()) // T
         buffer.put(0x43.toByte()) // C
@@ -735,6 +867,7 @@ object XtcEncoder {
         buffer.putLong(indexOffset.toLong())
         buffer.putLong(dataOffset.toLong())
         buffer.putLong(0L) // thumbOffset
+        buffer.putLong(chaptersOffset.toLong()) // chapterOffset
 
         // === Metadata (256 bytes) ===
         val metaStart = buffer.position()
@@ -760,7 +893,7 @@ object XtcEncoder {
 
         buffer.position(metaStart + XTC_METADATA_SIZE)
 
-        // === Chapters (88 bytes each) ===
+        // === Chapters (96 bytes each) ===
         for (chapter in chapters) {
             val chapterStart = buffer.position()
             val chapterName = chapter.name.take(79)
@@ -768,7 +901,9 @@ object XtcEncoder {
             buffer.position(chapterStart + 80)
             buffer.putShort(chapter.startPage.toShort())
             buffer.putShort(chapter.endPage.toShort())
-            buffer.putInt(0) // reserved
+            buffer.putInt(0) // reserved 1
+            buffer.putInt(0) // reserved 2
+            buffer.putInt(0) // reserved 3
         }
 
         // === Index Table (16 bytes per page) ===

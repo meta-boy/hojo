@@ -32,9 +32,49 @@ class NativeConverter {
 
         try {
             val spineReferences = book.spine.spineReferences
-            var pageCount = 0
-
             val textPaint = XtcEncoder.createTextPaint(settings)
+
+            // Pass 1: Calculate total pages
+            var totalBookPages = 0
+            val chapterPagesMap = mutableMapOf<String, Int>()
+
+            for (ref in spineReferences) {
+                if (ref.resource.id == "toc") continue
+                
+                try {
+                    val htmlContent = String(ref.resource.data, charset("UTF-8"))
+                    val doc = Jsoup.parse(htmlContent)
+                    val bodyHtml = doc.body().html()
+                    
+                    // Dummy ImageGetter for layout calculation (size matters, not content)
+                    // Actually, we need correct image sizes for layout.
+                    // Re-use logic or extract image getter creation.
+                    val imageGetter = Html.ImageGetter { source ->
+                        try {
+                            var resolvedHref = URI(ref.resource.href).resolve(source).path
+                            if (resolvedHref.startsWith("/")) resolvedHref = resolvedHref.substring(1)
+                            val imageResource = book.resources.getByHref(resolvedHref) ?: book.resources.getByHref(source)
+                            if (imageResource != null) {
+                                val availableWidth = 480 - (settings.margin * 2)
+                                return@ImageGetter XtcEncoder.createScaledDrawable(imageResource.data, availableWidth)
+                            }
+                        } catch (e: Exception) { e.printStackTrace() }
+                        null
+                    }
+
+                    val spanned = XtcEncoder.htmlToSpanned(bodyHtml, imageGetter, textPaint, settings)
+                    val breaks = XtcEncoder.calculatePageBreaks(spanned, textPaint, settings)
+                    val chapterPages = breaks.size
+                    
+                    chapterPagesMap[ref.resource.href] = chapterPages
+                    totalBookPages += chapterPages
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            // Pass 2: Render pages
+            var currentGlobalPage = 1
 
             for (ref in spineReferences) {
                 val resource = ref.resource
@@ -77,14 +117,23 @@ class NativeConverter {
                 val spanned = XtcEncoder.htmlToSpanned(bodyHtml, imageGetter, textPaint, settings)
 
                 // Render pages for this chapter and write each page immediately
-                val pages = XtcEncoder.renderPages(spanned, textPaint, settings, { current, _ ->
-                    pageCount++
-                    onProgress(pageCount, -1)
-                }, settings.colorMode)
+                val pageInfo = XtcEncoder.PageInfo(currentGlobalPage, totalBookPages)
+                
+                val pages = XtcEncoder.renderPages(
+                    spanned, 
+                    textPaint, 
+                    settings, 
+                    { _, _ -> }, // Progress handled below
+                    settings.colorMode,
+                    title,
+                    pageInfo
+                )
 
                 // Write pages to file immediately to free memory
                 for (page in pages) {
                     writer.writePage(page)
+                    onProgress(currentGlobalPage, totalBookPages)
+                    currentGlobalPage++
                 }
             }
 
