@@ -80,7 +80,21 @@ class HtmlConverter(private val okHttpClient: OkHttpClient? = null) {
         val spanned = XtcEncoder.htmlToSpanned(bodyHtml, imageGetter, textPaint, settings)
 
         // Render pages - pass colorMode from settings
-        val pages = XtcEncoder.renderPages(spanned, textPaint, settings, onProgress, settings.colorMode)
+        // Calculate total pages first
+        val breaks = XtcEncoder.calculatePageBreaks(spanned, textPaint, settings)
+        val totalPages = breaks.size
+
+        // Render pages with footer info
+        val pageInfo = XtcEncoder.PageInfo(1, totalPages)
+        val pages = XtcEncoder.renderPages(
+            spanned, 
+            textPaint, 
+            settings, 
+            onProgress, 
+            settings.colorMode,
+            title,
+            pageInfo
+        )
 
         // Pack to XTC
         val xtcData = XtcEncoder.packXtc(title, "Quick Link", pages)
