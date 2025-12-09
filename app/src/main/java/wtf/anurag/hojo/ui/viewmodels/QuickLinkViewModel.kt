@@ -206,7 +206,7 @@ class QuickLinkViewModel @Inject constructor(
                         html = cleanedHtml, // Use cleaned HTML for reader view
                         title = title,
                         baseUrl = _quickLinkUrl.value,
-                        settings = ConverterSettings(colorMode = XtcEncoder.ColorMode.MONOCHROME)
+                        settings = ConverterSettings(colorMode = ConverterSettings.ColorMode.MONOCHROME)
                     )
                 }
 

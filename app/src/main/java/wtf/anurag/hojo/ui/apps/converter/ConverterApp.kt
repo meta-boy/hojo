@@ -342,8 +342,8 @@ fun SettingsSection(
                         ) {
                                 Text(
                                         text = when (settings.colorMode) {
-                                                XtcEncoder.ColorMode.MONOCHROME -> "Monochrome (1-bit)"
-                                                XtcEncoder.ColorMode.GRAYSCALE_4 -> "Grayscale (4-level)"
+                                                ConverterSettings.ColorMode.MONOCHROME -> "Monochrome (1-bit)"
+                                                ConverterSettings.ColorMode.GRAYSCALE_4 -> "Grayscale (4-level)"
                                         }
                                 )
                         }
@@ -357,7 +357,7 @@ fun SettingsSection(
                                                 Text("Grayscale (4-level)", color = MaterialTheme.colorScheme.onSurface)
                                         },
                                         onClick = {
-                                                onUpdate(settings.copy(colorMode = XtcEncoder.ColorMode.GRAYSCALE_4))
+                                                onUpdate(settings.copy(colorMode = ConverterSettings.ColorMode.GRAYSCALE_4))
                                                 colorModeExpanded = false
                                         }
                                 )
@@ -366,7 +366,7 @@ fun SettingsSection(
                                                 Text("Monochrome (1-bit)", color = MaterialTheme.colorScheme.onSurface)
                                         },
                                         onClick = {
-                                                onUpdate(settings.copy(colorMode = XtcEncoder.ColorMode.MONOCHROME))
+                                                onUpdate(settings.copy(colorMode = ConverterSettings.ColorMode.MONOCHROME))
                                                 colorModeExpanded = false
                                         }
                                 )
